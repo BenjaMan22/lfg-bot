@@ -57,25 +57,9 @@ export async function buildPollView(
     votes,
   });
 
-  let locked = null;
-  if (night.status === "locked" && night.lockedGameId !== null) {
-    const [game] = getGamesByIds(db, [night.lockedGameId]);
-    const attendance = getAttendance(db, nightId);
-    const roster = [...attendance.entries()]
-      .filter(([, status]) => status === "in")
-      .map(([userId]) => userId);
-    locked = {
-      startUtc: night.lockedStartUtc!,
-      endUtc: night.lockedEndUtc!,
-      game,
-      roster,
-    };
-  }
-
-  return {
+  const base = {
     nightId,
     title: night.title,
-    status: night.status === "draft" ? "open" : night.status,
     displayTz: night.displayTz,
     deadlineUtc: night.deadlineUtc,
     days,
@@ -83,10 +67,38 @@ export async function buildPollView(
     availability,
     votes,
     responderIds,
-    pendingIds: await pendingMemberIds(client, night.guildId, night.channelId, responderIds),
     result,
-    locked,
   };
+
+  if (night.status === "locked") {
+    // Build (and validate) the locked details before any Discord API call —
+    // fail loudly here rather than render a half-built locked view. A missing
+    // game is currently unreachable (FK protects the reference, lockNight is
+    // the only writer), but that is accidental, not designed; do not trust it.
+    if (night.lockedGameId === null || night.lockedStartUtc === null || night.lockedEndUtc === null) {
+      throw new Error(`Night ${nightId} is locked but is missing its locked fields`);
+    }
+    const [game] = getGamesByIds(db, [night.lockedGameId]);
+    if (!game) {
+      throw new Error(`Night ${nightId} locked game ${night.lockedGameId} was not found`);
+    }
+    const attendance = getAttendance(db, nightId);
+    const roster = [...attendance.entries()]
+      .filter(([, status]) => status === "in")
+      .map(([userId]) => userId);
+
+    const pendingIds = await pendingMemberIds(client, night.guildId, night.channelId, responderIds);
+    return {
+      ...base,
+      status: "locked",
+      pendingIds,
+      locked: { startUtc: night.lockedStartUtc, endUtc: night.lockedEndUtc, game, roster },
+    };
+  }
+
+  const pendingIds = await pendingMemberIds(client, night.guildId, night.channelId, responderIds);
+  const status = night.status === "draft" ? "open" : night.status;
+  return { ...base, status, pendingIds };
 }
 
 export async function renderNightNow(

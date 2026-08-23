@@ -3,6 +3,7 @@ import { loadConfig } from "./config.js";
 import { routeInteraction } from "./interactions/router.js";
 import type { AppContext } from "./context.js";
 import { openDatabase } from "./db/index.js";
+import { startSweep } from "./nights/lock.js";
 
 const config = loadConfig();
 
@@ -23,6 +24,7 @@ const client = new Client({
 
 client.once(Events.ClientReady, (c) => {
   console.log(`Logged in as ${c.user.tag}`);
+  startSweep(c, db);
 });
 
 client.on(Events.InteractionCreate, (interaction) => {

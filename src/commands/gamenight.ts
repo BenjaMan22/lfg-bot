@@ -4,6 +4,7 @@ import {
   ButtonStyle,
   ChannelType,
   MessageFlags,
+  PermissionFlagsBits,
   SlashCommandBuilder,
   StringSelectMenuBuilder,
   type ChatInputCommandInteraction,
@@ -12,6 +13,7 @@ import { DateTime } from "luxon";
 import type { AppContext } from "../context.js";
 import { listGames } from "../db/repos/games.js";
 import {
+  cancelNight,
   createDraftNight,
   getOpenNightForChannel,
 } from "../db/repos/nights.js";
@@ -22,6 +24,8 @@ import {
   parseDeadline,
   parseWindow,
 } from "../domain/timeblocks.js";
+import { deleteScheduledEvent } from "../discord/events.js";
+import { renderNightNow } from "../discord/updateQueue.js";
 import { requireTimezone } from "../discord/timezonePicker.js";
 
 export const data = new SlashCommandBuilder()
@@ -57,6 +61,9 @@ export const data = new SlashCommandBuilder()
       .addStringOption((o) =>
         o.setName("title").setDescription("Title for the post").setMaxLength(80),
       ),
+  )
+  .addSubcommand((s) =>
+    s.setName("cancel").setDescription("Cancel this channel's open game night"),
   );
 
 export async function execute(
@@ -76,6 +83,33 @@ export async function execute(
       content: "Game nights only work inside a server channel.",
       flags: MessageFlags.Ephemeral,
     });
+    return;
+  }
+
+  if (interaction.options.getSubcommand() === "cancel") {
+    const night = getOpenNightForChannel(ctx.db, interaction.channelId);
+    if (!night) {
+      await interaction.reply({
+        content: "No open game night in this channel.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    const isModerator =
+      interaction.memberPermissions?.has(PermissionFlagsBits.ManageEvents) ?? false;
+    if (night.hostId !== interaction.user.id && !isModerator) {
+      await interaction.reply({
+        content: "Only the host or someone with Manage Events can cancel this.",
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+    cancelNight(ctx.db, night.id);
+    if (night.eventId) {
+      await deleteScheduledEvent(interaction.client, night.guildId, night.eventId);
+    }
+    await renderNightNow(interaction.client, ctx.db, night.id);
+    await interaction.reply({ content: "Cancelled.", flags: MessageFlags.Ephemeral });
     return;
   }
 

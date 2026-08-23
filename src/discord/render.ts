@@ -19,10 +19,9 @@ export interface LockedDetails {
   roster: string[];
 }
 
-export interface PollView {
+interface PollViewBase {
   nightId: number;
   title: string;
-  status: "open" | "locked" | "failed" | "cancelled";
   displayTz: string;
   deadlineUtc: number;
   days: NightDay[];
@@ -32,8 +31,32 @@ export interface PollView {
   responderIds: Set<string>;
   pendingIds: string[];
   result: SchedulingResult;
-  locked: LockedDetails | null;
 }
+
+export interface OpenPollView extends PollViewBase {
+  status: "open";
+}
+
+/** The only variant that carries locked details — required, not optional. */
+export interface LockedPollView extends PollViewBase {
+  status: "locked";
+  locked: LockedDetails;
+}
+
+export interface FailedPollView extends PollViewBase {
+  status: "failed";
+}
+
+export interface CancelledPollView extends PollViewBase {
+  status: "cancelled";
+}
+
+/**
+ * Discriminated on `status`. Only `LockedPollView` carries `locked`, and it is
+ * required there — a locked view without details, or a non-locked view with
+ * one, is a compile error rather than a runtime `null` check.
+ */
+export type PollView = OpenPollView | LockedPollView | FailedPollView | CancelledPollView;
 
 const mention = (id: string) => `<@${id}>`;
 /** Discord renders these in each viewer's own local time. */
@@ -106,7 +129,7 @@ export function renderPoll(view: PollView): {
     .setTitle(`🎲 ${view.title}`)
     .setFooter({ text: `Grid shown in ${view.displayTz}` });
 
-  if (view.status === "locked" && view.locked) {
+  if (view.status === "locked") {
     embed
       .setColor(0x2ecc71)
       .setDescription(
