@@ -272,4 +272,50 @@ describe("rankNight", () => {
     );
     expect(result.top[0].endUtc).toBe(at(d, 2));
   });
+
+  it("prefers the more-voted game when players, length and start all tie", () => {
+    const d = day(0, 6);
+    const popular: Game = { id: 6, name: "Popular", minPlayers: 2, maxPlayers: null };
+    const niche: Game = { id: 7, name: "Niche", minPlayers: 2, maxPlayers: null };
+    const result = rankNight(input({
+      days: [day(0, 2)],
+      games: [niche, popular],
+      availability: new Map([
+        ["a", new Set([at(d, 0), at(d, 1)])],
+        ["b", new Set([at(d, 0), at(d, 1)])],
+        ["c", new Set()],
+      ]),
+      votes: new Map([
+        ["a", new Set([6, 7])],
+        ["b", new Set([6, 7])],
+        ["c", new Set([6])],
+      ]),
+    }));
+    expect(result.top[0].game).toEqual(popular);
+  });
+
+  it("returns no near misses once anything is viable", () => {
+    const d = day(0, 6);
+    const result = rankNight(input({
+      games: [lethal, deepRock],
+      ...everyone(d, ["a", "b"], [0, 1, 2], [1, 2]),
+    }));
+    expect(result.top.length).toBeGreaterThan(0);
+    expect(result.nearMisses).toEqual([]);
+  });
+
+  it("prefers the longer window for a near miss when shortfall and roster size tie", () => {
+    const d = day(0, 6);
+    const result = rankNight(input(everyone(d, ["a"], [0, 1, 2, 3], [2])));
+    expect(result.top).toEqual([]);
+    expect(result.nearMisses[0]).toMatchObject({ startUtc: at(d, 0), endUtc: at(d, 4) });
+  });
+
+  it("returns nothing when minSessionHours is not a positive number", () => {
+    const d = day(0, 6);
+    const result = rankNight(
+      input({ ...everyone(d, ["a", "b"], [0, 1, 2], [2]), minSessionHours: 0 }),
+    );
+    expect(result).toEqual({ top: [], nearMisses: [] });
+  });
 });

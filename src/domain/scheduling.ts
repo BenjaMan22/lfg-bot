@@ -36,6 +36,11 @@ export interface NearMiss {
 }
 
 export interface SchedulingResult {
+  /**
+   * The best suggestions, day-diversified: distinct-day picks are preferred
+   * over same-day backfills, so array order is not strictly rank order —
+   * a backfilled entry can outrank an earlier distinct-day pick.
+   */
   top: Suggestion[];
   nearMisses: NearMiss[];
 }
@@ -77,6 +82,8 @@ function compareSuggestions(
 
 export function rankNight(input: SchedulingInput): SchedulingResult {
   const { days, minSessionHours, games, availability, votes } = input;
+
+  if (minSessionHours < 1) return { top: [], nearMisses: [] };
 
   const voteCounts = new Map(games.map((g) => [g.id, totalVotes(g.id, votes)]));
   const voters = new Map(
@@ -165,6 +172,9 @@ export function rankNight(input: SchedulingInput): SchedulingResult {
   misses.sort((a, b) => {
     if (a.shortfall !== b.shortfall) return a.shortfall - b.shortfall;
     if (a.rosterSize !== b.rosterSize) return b.rosterSize - a.rosterSize;
+    const aLength = a.endUtc - a.startUtc;
+    const bLength = b.endUtc - b.startUtc;
+    if (aLength !== bLength) return bLength - aLength;
     return a.startUtc - b.startUtc;
   });
   const bestMisses: NearMiss[] = [];
