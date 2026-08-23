@@ -1,13 +1,12 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
-import type { DatabaseSync } from "node:sqlite";
 import { loadConfig } from "./config.js";
 import { routeInteraction } from "./interactions/router.js";
 import type { AppContext } from "./context.js";
+import { openDatabase } from "./db/index.js";
 
 const config = loadConfig();
 
-// Task 4 replaces this with openDatabase(config.databasePath).
-const db = null as unknown as DatabaseSync;
+const db = openDatabase(config.databasePath);
 const ctx: AppContext = { db, config };
 
 const client = new Client({
