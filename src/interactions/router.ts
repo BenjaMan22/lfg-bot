@@ -6,6 +6,7 @@ import {
   handleTimezoneOtherButton,
   handleTimezoneSelect,
 } from "../discord/timezonePicker.js";
+import { handlePostButton, handleSetupSelect } from "./setup.js";
 
 export function parseCustomId(id: string): { action: string; args: string[] } {
   const [namespace, action, ...args] = id.split(":");
@@ -42,12 +43,21 @@ export async function routeInteraction(
       return;
     }
     if (interaction.isStringSelectMenu()) {
-      const { action } = parseCustomId(interaction.customId);
+      const { action, args } = parseCustomId(interaction.customId);
       if (action === "tz") return await handleTimezoneSelect(interaction, ctx);
+      if (action === "setup") return await handleSetupSelect(interaction, ctx, Number(args[0]));
     }
     if (interaction.isButton()) {
-      const { action } = parseCustomId(interaction.customId);
+      const { action, args } = parseCustomId(interaction.customId);
       if (action === "tzother") return await handleTimezoneOtherButton(interaction);
+      if (action === "post") return await handlePostButton(interaction, ctx, Number(args[0]));
+      if (action === "setupadd") {
+        await interaction.reply({
+          content: "Suggesting a new game is coming soon. Use `/games add` for now.",
+          flags: MessageFlags.Ephemeral,
+        });
+        return;
+      }
     }
     if (interaction.isModalSubmit()) {
       const { action } = parseCustomId(interaction.customId);
