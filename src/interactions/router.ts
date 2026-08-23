@@ -7,6 +7,16 @@ import {
   handleTimezoneSelect,
 } from "../discord/timezonePicker.js";
 import { handlePostButton, handleSetupSelect } from "./setup.js";
+import {
+  handleAvailabilityButton,
+  handleDaySelect,
+  handleInButton,
+  handleOutButton,
+  handleSuggestButton,
+  handleSuggestModal,
+  handleVotesButton,
+  handleVotesSelect,
+} from "./respond.js";
 
 export function parseCustomId(id: string): { action: string; args: string[] } {
   const [namespace, action, ...args] = id.split(":");
@@ -46,22 +56,26 @@ export async function routeInteraction(
       const { action, args } = parseCustomId(interaction.customId);
       if (action === "tz") return await handleTimezoneSelect(interaction, ctx);
       if (action === "setup") return await handleSetupSelect(interaction, ctx, Number(args[0]));
+      if (action === "day") {
+        return await handleDaySelect(interaction, ctx, Number(args[0]), Number(args[1]));
+      }
+      if (action === "voteselect") return await handleVotesSelect(interaction, ctx, Number(args[0]));
     }
     if (interaction.isButton()) {
       const { action, args } = parseCustomId(interaction.customId);
       if (action === "tzother") return await handleTimezoneOtherButton(interaction);
       if (action === "post") return await handlePostButton(interaction, ctx, Number(args[0]));
-      if (action === "setupadd") {
-        await interaction.reply({
-          content: "Suggesting a new game is coming soon. Use `/games add` for now.",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      if (action === "setupadd") return await handleSuggestButton(interaction, Number(args[0]));
+      if (action === "avail") return await handleAvailabilityButton(interaction, ctx, Number(args[0]));
+      if (action === "votes") return await handleVotesButton(interaction, ctx, Number(args[0]));
+      if (action === "suggest") return await handleSuggestButton(interaction, Number(args[0]));
+      if (action === "out") return await handleOutButton(interaction, ctx, Number(args[0]));
+      if (action === "in") return await handleInButton(interaction, ctx, Number(args[0]));
     }
     if (interaction.isModalSubmit()) {
-      const { action } = parseCustomId(interaction.customId);
+      const { action, args } = parseCustomId(interaction.customId);
       if (action === "tzmodal") return await handleTimezoneModal(interaction, ctx);
+      if (action === "suggestmodal") return await handleSuggestModal(interaction, ctx, Number(args[0]));
     }
   } catch (error) {
     console.error("Interaction failed", {
