@@ -195,7 +195,11 @@ SQL leaks into command or interaction handlers.
 | `game_votes` | `night_id`, `user_id`, `game_id`; PK on all three |
 | `attendance` | `night_id`, `user_id`, `status` (`in` / `out`) |
 
-`nights.status` is one of `open`, `locked`, `failed`, `cancelled`.
+`nights.status` is one of `draft`, `open`, `locked`, `failed`, `cancelled`.
+A night is `draft` between `/gamenight create` and **Post it**, so the setup
+selections survive a restart rather than living in memory. Drafts do not count
+against the one-open-night-per-channel rule and are deleted by the sweep once
+they are an hour old.
 
 ## Architecture
 
@@ -237,9 +241,15 @@ connection or a bot token.
   delay, so a burst of responses produces one message edit rather than ten.
 - **`customId` format:** `gn:<action>:<nightId>[:<extra>]`, within Discord's
   100-character limit.
-- **Intents:** `Guilds` and `GuildScheduledEvents` only. Everything is driven by
-  interactions, so **no privileged intents are needed** — no Message Content
-  toggle and no bot verification.
+- **Intents:** `Guilds`, `GuildMembers`, `GuildScheduledEvents`.
+  `GuildMembers` is privileged and must be toggled on in the Developer Portal.
+  It is required only for the "no response" list, which needs the guild's member
+  list; there is no non-privileged way to enumerate members. The toggle needs no
+  application review below 100 servers. **Message Content is not needed** —
+  everything is driven by interactions — and that is the intent that actually
+  causes verification pain.
+- **Non-responders** are the non-bot guild members with permission to view the
+  poll's channel, minus everyone who has responded.
 - **Bot permissions:** Send Messages, Embed Links, Manage Events.
   Scopes: `bot`, `applications.commands`.
 
