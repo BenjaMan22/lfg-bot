@@ -68,18 +68,22 @@ describe("games repository", () => {
 
   it("lets the creator remove their own game", () => {
     addGame(db, "g1", "Deep Rock", 2, 4, "u1");
-    expect(removeGame(db, "g1", "Deep Rock", "u1", false)).toBe(true);
+    expect(removeGame(db, "g1", "Deep Rock", "u1", false)).toBe("removed");
     expect(listGames(db, "g1")).toEqual([]);
   });
 
   it("refuses removal by another member without force", () => {
     addGame(db, "g1", "Deep Rock", 2, 4, "u1");
-    expect(removeGame(db, "g1", "Deep Rock", "u2", false)).toBe(false);
+    expect(removeGame(db, "g1", "Deep Rock", "u2", false)).toBe("forbidden");
     expect(listGames(db, "g1")).toHaveLength(1);
   });
 
   it("allows a moderator to force removal", () => {
     addGame(db, "g1", "Deep Rock", 2, 4, "u1");
-    expect(removeGame(db, "g1", "Deep Rock", "u2", true)).toBe(true);
+    expect(removeGame(db, "g1", "Deep Rock", "u2", true)).toBe("removed");
+  });
+
+  it("reports not_found for a game that was never added", () => {
+    expect(removeGame(db, "g1", "Nonexistent", "u1", false)).toBe("not_found");
   });
 });
