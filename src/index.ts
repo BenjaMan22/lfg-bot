@@ -15,6 +15,10 @@ const client = new Client({
     GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildScheduledEvents,
   ],
+  // User-supplied text (game names, poll titles) is echoed into messages.
+  // Default to parsing no mentions; the few messages that intend to ping
+  // pass their own allowedMentions to override this.
+  allowedMentions: { parse: [] },
 });
 
 client.once(Events.ClientReady, (c) => {
