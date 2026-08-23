@@ -21,3 +21,16 @@ export function openDatabase(path: string): DatabaseSync {
 export function allRows<T>(statement: StatementSync, ...params: SQLInputValue[]): T[] {
   return statement.all(...params) as unknown as T[];
 }
+
+/** Run `work` inside a transaction, rolling back if it throws. */
+export function withTransaction<T>(db: DatabaseSync, work: () => T): T {
+  db.exec("BEGIN");
+  try {
+    const result = work();
+    db.exec("COMMIT");
+    return result;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}

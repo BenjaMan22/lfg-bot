@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { NightDay } from "../../domain/timeblocks.js";
-import { allRows } from "../index.js";
+import { allRows, withTransaction } from "../index.js";
 
 export type NightStatus = "draft" | "open" | "locked" | "failed" | "cancelled";
 
@@ -76,32 +76,34 @@ const NIGHT_COLUMNS = `SELECT id, guild_id, channel_id, message_id, host_id, tit
   locked_start_utc, locked_end_utc, locked_game_id, event_id FROM nights`;
 
 export function createDraftNight(db: DatabaseSync, input: CreateNightInput): number {
-  const result = db
-    .prepare(
-      `INSERT INTO nights (guild_id, channel_id, host_id, title, display_tz,
-        min_session_hours, deadline_utc, status, voice_channel_id, created_utc)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
-    )
-    .run(
-      input.guildId,
-      input.channelId,
-      input.hostId,
-      input.title,
-      input.displayTz,
-      input.minSessionHours,
-      input.deadlineUtc,
-      input.voiceChannelId,
-      input.createdUtc,
+  return withTransaction(db, () => {
+    const result = db
+      .prepare(
+        `INSERT INTO nights (guild_id, channel_id, host_id, title, display_tz,
+          min_session_hours, deadline_utc, status, voice_channel_id, created_utc)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+      )
+      .run(
+        input.guildId,
+        input.channelId,
+        input.hostId,
+        input.title,
+        input.displayTz,
+        input.minSessionHours,
+        input.deadlineUtc,
+        input.voiceChannelId,
+        input.createdUtc,
+      );
+    const nightId = Number(result.lastInsertRowid);
+    const insertDay = db.prepare(
+      `INSERT INTO night_days (night_id, day_index, window_start_utc, window_end_utc)
+       VALUES (?, ?, ?, ?)`,
     );
-  const nightId = Number(result.lastInsertRowid);
-  const insertDay = db.prepare(
-    `INSERT INTO night_days (night_id, day_index, window_start_utc, window_end_utc)
-     VALUES (?, ?, ?, ?)`,
-  );
-  for (const day of input.days) {
-    insertDay.run(nightId, day.dayIndex, day.startUtc, day.endUtc);
-  }
-  return nightId;
+    for (const day of input.days) {
+      insertDay.run(nightId, day.dayIndex, day.startUtc, day.endUtc);
+    }
+    return nightId;
+  });
 }
 
 export function getNight(db: DatabaseSync, id: number): NightRow | null {
@@ -147,11 +149,13 @@ export function setNightGames(
   nightId: number,
   gameIds: number[],
 ): void {
-  db.prepare("DELETE FROM night_games WHERE night_id = ?").run(nightId);
-  const insert = db.prepare(
-    "INSERT INTO night_games (night_id, game_id) VALUES (?, ?)",
-  );
-  for (const gameId of gameIds) insert.run(nightId, gameId);
+  withTransaction(db, () => {
+    db.prepare("DELETE FROM night_games WHERE night_id = ?").run(nightId);
+    const insert = db.prepare(
+      "INSERT INTO night_games (night_id, game_id) VALUES (?, ?)",
+    );
+    for (const gameId of gameIds) insert.run(nightId, gameId);
+  });
 }
 
 export function getNightGameIds(db: DatabaseSync, nightId: number): number[] {
@@ -207,15 +211,17 @@ export function setAvailabilityForDay(
   chosen: number[],
 ): void {
   if (dayHours.length === 0) return;
-  const placeholders = dayHours.map(() => "?").join(",");
-  db.prepare(
-    `DELETE FROM availability
-     WHERE night_id = ? AND user_id = ? AND utc_hour IN (${placeholders})`,
-  ).run(nightId, userId, ...dayHours);
-  const insert = db.prepare(
-    "INSERT INTO availability (night_id, user_id, utc_hour) VALUES (?, ?, ?)",
-  );
-  for (const hour of chosen) insert.run(nightId, userId, hour);
+  withTransaction(db, () => {
+    const placeholders = dayHours.map(() => "?").join(",");
+    db.prepare(
+      `DELETE FROM availability
+       WHERE night_id = ? AND user_id = ? AND utc_hour IN (${placeholders})`,
+    ).run(nightId, userId, ...dayHours);
+    const insert = db.prepare(
+      "INSERT INTO availability (night_id, user_id, utc_hour) VALUES (?, ?, ?)",
+    );
+    for (const hour of chosen) insert.run(nightId, userId, hour);
+  });
 }
 
 interface VoteDbRow {
@@ -243,14 +249,16 @@ export function setVotes(
   userId: string,
   gameIds: number[],
 ): void {
-  db.prepare("DELETE FROM game_votes WHERE night_id = ? AND user_id = ?").run(
-    nightId,
-    userId,
-  );
-  const insert = db.prepare(
-    "INSERT INTO game_votes (night_id, user_id, game_id) VALUES (?, ?, ?)",
-  );
-  for (const gameId of gameIds) insert.run(nightId, userId, gameId);
+  withTransaction(db, () => {
+    db.prepare("DELETE FROM game_votes WHERE night_id = ? AND user_id = ?").run(
+      nightId,
+      userId,
+    );
+    const insert = db.prepare(
+      "INSERT INTO game_votes (night_id, user_id, game_id) VALUES (?, ?, ?)",
+    );
+    for (const gameId of gameIds) insert.run(nightId, userId, gameId);
+  });
 }
 
 interface AttendanceDbRow {

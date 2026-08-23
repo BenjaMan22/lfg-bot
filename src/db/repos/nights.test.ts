@@ -158,4 +158,30 @@ describe("nights repository", () => {
     expect(getNight(db, draft)).toBeNull();
     expect(getNight(db, published)).not.toBeNull();
   });
+
+  it("rolls back the whole night when a day insert fails", () => {
+    expect(() =>
+      createDraftNight(db, {
+        guildId: "g1",
+        channelId: "c1",
+        hostId: "u1",
+        title: "Game Night",
+        displayTz: "America/Chicago",
+        minSessionHours: 2,
+        deadlineUtc: 1_000_000 * 3600 - 3600,
+        voiceChannelId: null,
+        // Duplicate dayIndex violates night_days' primary key.
+        days: [
+          { dayIndex: 0, startUtc: 1_000_000 * 3600, endUtc: 1_000_005 * 3600 },
+          { dayIndex: 0, startUtc: 1_000_024 * 3600, endUtc: 1_000_029 * 3600 },
+        ],
+        createdUtc: 1_000_000 * 3600 - 7200,
+      }),
+    ).toThrow();
+    expect(getOpenNightForChannel(db, "c1")).toBeNull();
+    const count = db.prepare("SELECT COUNT(*) AS c FROM nights").get() as {
+      c: number;
+    };
+    expect(count.c).toBe(0);
+  });
 });
