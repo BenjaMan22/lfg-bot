@@ -1,0 +1,12 @@
+services:
+  gamenight:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # This is what makes the database survive a rebuild. dist/ and the app
+      # image are rebuilt from scratch on every `docker compose up --build`,
+      # but ./data is a bind mount, so data/gamenight.db lives on the host
+      # and outlives the container. Skip this and every redeploy starts an
+      # empty database.
+      - ./data:/app/data
