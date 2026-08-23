@@ -1,6 +1,11 @@
 import { MessageFlags, type Interaction } from "discord.js";
 import type { AppContext } from "../context.js";
 import { commandsByName } from "../commands/index.js";
+import {
+  handleTimezoneModal,
+  handleTimezoneOtherButton,
+  handleTimezoneSelect,
+} from "../discord/timezonePicker.js";
 
 export function parseCustomId(id: string): { action: string; args: string[] } {
   const [namespace, action, ...args] = id.split(":");
@@ -36,7 +41,18 @@ export async function routeInteraction(
       await command.execute(interaction, ctx);
       return;
     }
-    // Component and modal handlers are registered in later tasks.
+    if (interaction.isStringSelectMenu()) {
+      const { action } = parseCustomId(interaction.customId);
+      if (action === "tz") return await handleTimezoneSelect(interaction, ctx);
+    }
+    if (interaction.isButton()) {
+      const { action } = parseCustomId(interaction.customId);
+      if (action === "tzother") return await handleTimezoneOtherButton(interaction);
+    }
+    if (interaction.isModalSubmit()) {
+      const { action } = parseCustomId(interaction.customId);
+      if (action === "tzmodal") return await handleTimezoneModal(interaction, ctx);
+    }
   } catch (error) {
     console.error("Interaction failed", {
       id: interaction.id,
