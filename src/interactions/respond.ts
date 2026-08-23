@@ -143,6 +143,11 @@ export async function handleVotesSelect(
   ctx: AppContext,
   nightId: number,
 ): Promise<void> {
+  const night = openNightOrNull(ctx, nightId);
+  if (!night) {
+    await interaction.reply({ content: EXPIRED, flags: MessageFlags.Ephemeral });
+    return;
+  }
   setVotes(ctx.db, nightId, interaction.user.id, interaction.values.map(Number));
   await interaction.deferUpdate();
   queueRender(interaction.client, ctx.db, nightId);
@@ -234,7 +239,7 @@ export async function handleSuggestModal(
   }
 
   const votes = getVotes(ctx.db, nightId).get(interaction.user.id) ?? new Set<number>();
-  setVotes(ctx.db, nightId, interaction.user.id, [...votes, game.id]);
+  setVotes(ctx.db, nightId, interaction.user.id, [...new Set([...votes, game.id])]);
 
   await interaction.reply({
     content: `Added **${game.name}** (${game.minPlayers}–${game.maxPlayers ?? "∞"}) and voted you for it.`,
