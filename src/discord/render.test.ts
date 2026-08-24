@@ -93,7 +93,38 @@ describe("renderPoll", () => {
     const text = JSON.stringify(embed);
     expect(text).toContain("Lethal Company");
     expect(text).toContain("<@a>");
-    expect(text).toContain(`<t:${days[0].startUtc}:t>`);
+    // `:f` on the start carries the date, so two suggestions a day apart are
+    // told apart; `:t` on the end keeps the range from restating it.
+    expect(text).toContain(`<t:${days[0].startUtc}:f>`);
+    expect(text).toContain(`<t:${days[0].startUtc + 2 * 3600}:t>`);
+  });
+
+  it("dates the locked night rather than giving a bare time", () => {
+    const locked: LockedDetails = {
+      startUtc: days[0].startUtc,
+      endUtc: days[0].startUtc + 3 * 3600,
+      game: lethal,
+      roster: ["a", "b"],
+    };
+    const text = JSON.stringify(renderPoll(lockedView(locked)).embeds[0].toJSON());
+    expect(text).toContain(`<t:${days[0].startUtc}:f>`);
+  });
+
+  it("dates a near miss so it names the evening it is talking about", () => {
+    const hours = [days[0].startUtc, days[0].startUtc + 3600];
+    const availability = new Map([["a", new Set(hours)]]);
+    const votes = new Map([["a", new Set([2])]]);
+    const result = rankNight({
+      days,
+      minSessionHours: 2,
+      games: [lethal],
+      availability,
+      votes,
+    });
+    const text = JSON.stringify(
+      renderPoll(failedView({ availability, votes, result })).embeds[0].toJSON(),
+    );
+    expect(text).toContain(`<t:${days[0].startUtc}:f>`);
   });
 
   it("flags an oversubscribed roster", () => {

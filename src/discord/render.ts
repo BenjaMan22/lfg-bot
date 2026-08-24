@@ -68,7 +68,14 @@ export interface CancelledPollView extends PollViewBase {
 export type PollView = OpenPollView | LockedPollView | FailedPollView | CancelledPollView;
 
 const mention = (id: string) => `<@${id}>`;
-/** Discord renders these in each viewer's own local time. */
+/**
+ * Discord renders both in each viewer's own local time. A range needs the
+ * DAY on its start — with `:t` on both ends, two suggestions 24 hours apart
+ * read identically as "8:00 PM – 11:00 PM" and nobody can tell which night is
+ * which. The end keeps the bare time, since a range that restates the date is
+ * just noise.
+ */
+const dayAndClock = (utc: number) => `<t:${utc}:f>`;
 const clock = (utc: number) => `<t:${utc}:t>`;
 
 /** Discord's hard limit on one embed field value. */
@@ -146,7 +153,7 @@ function suggestionLines(view: PollView): string {
           ? ` — ${s.roster.length} in, plays ${s.game.maxPlayers}, split lobbies?`
           : "";
         return [
-          `**${index + 1}. ${clock(s.startUtc)}–${clock(s.endUtc)} · ${s.game.name}** · ${s.roster.length} players${flag}`,
+          `**${index + 1}. ${dayAndClock(s.startUtc)}–${clock(s.endUtc)} · ${s.game.name}** · ${s.roster.length} players${flag}`,
           mentionList(s.roster, SUGGESTION_MENTION_CAP),
         ].join("\n");
       })
@@ -156,7 +163,7 @@ function suggestionLines(view: PollView): string {
     return view.result.nearMisses
       .map(
         (m) =>
-          `${clock(m.startUtc)}–${clock(m.endUtc)} · **${m.game.name}** had ${m.rosterSize}; needs ${m.game.minPlayers}.`,
+          `${dayAndClock(m.startUtc)}–${clock(m.endUtc)} · **${m.game.name}** had ${m.rosterSize}; needs ${m.game.minPlayers}.`,
       )
       .join("\n");
   }
@@ -175,7 +182,7 @@ export function renderPoll(view: PollView): {
     embed
       .setColor(0x2ecc71)
       .setDescription(
-        `**Locked in.** ${clock(view.locked.startUtc)}–${clock(view.locked.endUtc)} · **${view.locked.game.name}**`,
+        `**Locked in.** ${dayAndClock(view.locked.startUtc)}–${clock(view.locked.endUtc)} · **${view.locked.game.name}**`,
       )
       .addFields({
         name: `Playing (${view.locked.roster.length})`,
