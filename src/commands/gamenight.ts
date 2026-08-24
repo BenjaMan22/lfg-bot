@@ -90,7 +90,11 @@ export async function execute(
   if (interaction.options.getSubcommand() === "cancel") {
     // Open or locked: a locked night still has a live Scheduled Event and
     // roster to retract, so it must stay cancellable too.
-    const night = getCancellableNightForChannel(ctx.db, interaction.channelId);
+    const night = getCancellableNightForChannel(
+      ctx.db,
+      interaction.channelId,
+      Math.floor(Date.now() / 1000),
+    );
     if (!night) {
       await interaction.reply({
         content: "No open game night in this channel.",

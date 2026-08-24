@@ -8,6 +8,7 @@ import {
   dueNights,
   deleteStaleDrafts,
   getAvailability,
+  getCancellableNightForChannel,
   getNight,
   getNightDays,
   getNightGameIds,
@@ -23,15 +24,18 @@ import {
 } from "./nights.js";
 
 let db: DatabaseSync;
+const HOUR = 3600;
+/** A fixed "now" for the cancellable-night tests, well after DAYS. */
+const NOW = 2_000_000 * HOUR;
 const DAYS = [
   { dayIndex: 0, startUtc: 1_000_000 * 3600, endUtc: 1_000_005 * 3600 },
   { dayIndex: 1, startUtc: 1_000_024 * 3600, endUtc: 1_000_029 * 3600 },
 ];
 
-function makeDraft(): number {
+function makeDraftIn(channelId: string): number {
   return createDraftNight(db, {
     guildId: "g1",
-    channelId: "c1",
+    channelId,
     hostId: "u1",
     title: "Game Night",
     displayTz: "America/Chicago",
@@ -41,6 +45,10 @@ function makeDraft(): number {
     days: DAYS,
     createdUtc: 1_000_000 * 3600 - 7200,
   });
+}
+
+function makeDraft(): number {
+  return makeDraftIn("c1");
 }
 
 beforeEach(() => {
@@ -157,6 +165,48 @@ describe("nights repository", () => {
     deleteStaleDrafts(db, 1_000_000 * 3600);
     expect(getNight(db, draft)).toBeNull();
     expect(getNight(db, published)).not.toBeNull();
+  });
+
+  it("finds the live open night, not an old finished one, to cancel", () => {
+    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const finished = makeDraftIn("c9");
+    publishNight(db, finished, "m-old");
+    lockNight(db, finished, NOW - 10 * HOUR, NOW - 8 * HOUR, game.id, "e-old");
+    const live = makeDraftIn("c9");
+    publishNight(db, live, "m-live");
+
+    expect(getCancellableNightForChannel(db, "c9", NOW)?.id).toBe(live);
+  });
+
+  it("can cancel a locked night whose window has not ended yet", () => {
+    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const id = makeDraftIn("c9");
+    publishNight(db, id, "m1");
+    lockNight(db, id, NOW - HOUR, NOW + 2 * HOUR, game.id, "e1");
+
+    expect(getCancellableNightForChannel(db, "c9", NOW)?.id).toBe(id);
+  });
+
+  it("has nothing to cancel once the only locked night has finished", () => {
+    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const id = makeDraftIn("c9");
+    publishNight(db, id, "m1");
+    lockNight(db, id, NOW - 4 * HOUR, NOW - HOUR, game.id, "e1");
+
+    expect(getCancellableNightForChannel(db, "c9", NOW)).toBeNull();
+  });
+
+  it("prefers the open night even when a locked one is newer", () => {
+    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const open = makeDraftIn("c9");
+    publishNight(db, open, "m-open");
+    // Locked straight from draft: publishing it first would mean two open
+    // nights in one channel, which the schema forbids.
+    const newerLocked = makeDraftIn("c9");
+    lockNight(db, newerLocked, NOW, NOW + 3 * HOUR, game.id, "e-new");
+    expect(newerLocked).toBeGreaterThan(open);
+
+    expect(getCancellableNightForChannel(db, "c9", NOW)?.id).toBe(open);
   });
 
   it("rolls back the whole night when a day insert fails", () => {
