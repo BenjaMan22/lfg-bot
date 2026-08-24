@@ -70,7 +70,18 @@ export function getGamesByIds(db: DatabaseSync, ids: number[]): Game[] {
   return rows.map(toGame);
 }
 
-export type RemoveGameResult = "removed" | "not_found" | "forbidden";
+export type RemoveGameResult = "removed" | "not_found" | "forbidden" | "in_use";
+
+/**
+ * night_games.game_id, game_votes.game_id, and nights.locked_game_id all
+ * reference games(id) with foreign keys enforced and no ON DELETE — by
+ * design, so a night's history can't quietly lose the game it was about.
+ * That means a game that has ever been in a poll raises SQLITE_CONSTRAINT_
+ * FOREIGNKEY on delete; callers should not see that as a generic failure.
+ */
+function isForeignKeyConstraintError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes("FOREIGN KEY constraint failed");
+}
 
 export function removeGame(
   db: DatabaseSync,
@@ -84,6 +95,11 @@ export function removeGame(
     .get(guildId, name.trim()) as { id: number; created_by: string } | undefined;
   if (!row) return "not_found";
   if (!force && row.created_by !== actorId) return "forbidden";
-  db.prepare("DELETE FROM games WHERE id = ?").run(row.id);
+  try {
+    db.prepare("DELETE FROM games WHERE id = ?").run(row.id);
+  } catch (error) {
+    if (isForeignKeyConstraintError(error)) return "in_use";
+    throw error;
+  }
   return "removed";
 }

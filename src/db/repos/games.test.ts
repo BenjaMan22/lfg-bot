@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { DatabaseSync } from "node:sqlite";
 import { openDatabase } from "../index.js";
+import { createDraftNight, setNightGames } from "./nights.js";
 import {
   addGame,
   findGameByName,
@@ -13,6 +14,22 @@ let db: DatabaseSync;
 beforeEach(() => {
   db = openDatabase(":memory:");
 });
+
+/** A minimal night, just enough to reference a game from night_games. */
+function makeNight(): number {
+  return createDraftNight(db, {
+    guildId: "g1",
+    channelId: "c1",
+    hostId: "u1",
+    title: "Game Night",
+    displayTz: "America/Chicago",
+    minSessionHours: 2,
+    deadlineUtc: 1_000_000,
+    voiceChannelId: null,
+    days: [{ dayIndex: 0, startUtc: 1_000_100, endUtc: 1_000_200 }],
+    createdUtc: 999_000,
+  });
+}
 
 describe("games repository", () => {
   it("adds and reads back a game", () => {
@@ -85,5 +102,23 @@ describe("games repository", () => {
 
   it("reports not_found for a game that was never added", () => {
     expect(removeGame(db, "g1", "Nonexistent", "u1", false)).toBe("not_found");
+  });
+
+  it("reports in_use rather than throwing for a game referenced by a night, and keeps it", () => {
+    const game = addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    const nightId = makeNight();
+    setNightGames(db, nightId, [game.id]);
+
+    expect(removeGame(db, "g1", "Deep Rock", "u1", false)).toBe("in_use");
+    expect(listGames(db, "g1")).toEqual([game]);
+  });
+
+  it("reports in_use even with force, since the constraint is not a permission problem", () => {
+    const game = addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    const nightId = makeNight();
+    setNightGames(db, nightId, [game.id]);
+
+    expect(removeGame(db, "g1", "Deep Rock", "u2", true)).toBe("in_use");
+    expect(listGames(db, "g1")).toEqual([game]);
   });
 });

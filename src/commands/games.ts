@@ -102,7 +102,7 @@ export async function execute(
   }
 
   // remove
-  const name = interaction.options.getString("name", true);
+  const name = interaction.options.getString("name", true).trim();
   const isModerator =
     interaction.memberPermissions?.has(PermissionFlagsBits.ManageEvents) ?? false;
   const result = removeGame(ctx.db, guildId, name, interaction.user.id, isModerator);
@@ -111,6 +111,7 @@ export async function execute(
     removed: `Removed **${name}**.`,
     not_found: `**${name}** is not in the library. Check \`/games list\` for the exact name.`,
     forbidden: `**${name}** was added by someone else. Removing it needs the Manage Events permission.`,
+    in_use: `**${name}** is used by an existing game night and can't be removed.`,
   } as const;
 
   await interaction.reply({
