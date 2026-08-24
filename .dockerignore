@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.*
+.git
+.gitignore
+dist
+data
+*.db
+*.db-wal
+*.db-shm
+docs
+.superpowers

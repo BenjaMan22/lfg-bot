@@ -93,10 +93,10 @@ Only one open night is allowed per channel at a time.
 
 | Option      | Required | Description                                            |
 | ----------- | -------- | -------------------------------------------------------- |
-| `days`      | yes      | Comma-separated days, e.g. `fri,sat` or `2026-08-28`.    |
+| `days`      | yes      | Comma-separated days, e.g. `fri,sat` or `2026-08-28`. At most 5 days — Discord only allows five dropdowns in one message. |
 | `window`    | yes      | The evening window each day, e.g. `6pm-1am`.             |
-| `deadline`  | yes      | When responses close, e.g. `thu 9pm` or `24h`.           |
-| `minhours`  | no       | Shortest session worth having, in hours (default 2).     |
+| `deadline`  | yes      | When responses close, e.g. `thu 9pm` or `24h`. Must land before the first day's window starts — otherwise there's no time left to decide. |
+| `minhours`  | no       | Shortest session worth having, in hours. 1–12, default 2. |
 | `voice`     | no       | A voice channel to attach the Scheduled Event to.        |
 | `title`     | no       | Title for the poll post (up to 80 characters).           |
 
@@ -185,6 +185,7 @@ On a small VPS with Docker and Docker Compose installed:
 ```bash
 git clone <this repo> && cd discord-bots
 cp .env.example .env   # fill it in, as above
+mkdir -p data && sudo chown -R 1000:1000 data   # see note below
 docker compose up -d --build
 ```
 
@@ -194,6 +195,12 @@ container's own filesystem (including `dist/`) is rebuilt from scratch on
 every `--build`, but `./data` lives on the host, so `data/gamenight.db`
 persists across it. If you ever run without that mount, every rebuild
 starts with an empty database.
+
+The container runs as the image's unprivileged `node` user (uid 1000), not
+root, so `./data` has to be writable by uid 1000 on the host *before* the
+first `up` — the `chown` above does that. Skip it and the first start fails
+to open the database with an error that doesn't obviously look like a
+permissions problem.
 
 ## Two things to remember
 

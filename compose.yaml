@@ -9,4 +9,11 @@ services:
       # but ./data is a bind mount, so data/gamenight.db lives on the host
       # and outlives the container. Skip this and every redeploy starts an
       # empty database.
+      #
+      # The container runs as the image's unprivileged "node" user (uid
+      # 1000), not root, so this directory must be writable by uid 1000 on
+      # the host *before* the first `up`, or SQLite fails to open the
+      # database file with an error that doesn't look like a permissions
+      # problem. On the host:
+      #   mkdir -p data && sudo chown -R 1000:1000 data
       - ./data:/app/data
