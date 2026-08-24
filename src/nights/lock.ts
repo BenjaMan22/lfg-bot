@@ -50,8 +50,16 @@ async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promi
 
     const channel = await client.channels.fetch(night.channelId);
     if (channel?.isTextBased() && "send" in channel) {
+      // eventId is null whenever createScheduledEvent gave up — a missing
+      // Manage Events permission, an API error, or a window that had already
+      // started by lock time. The night itself is still locked correctly;
+      // only the Scheduled Event is missing, so say so rather than staying
+      // silent about it.
+      const eventNote = eventId
+        ? ""
+        : "\nI couldn't create the Scheduled Event — check my Manage Events permission.";
       await channel.send({
-        content: `${winner.roster.map((id) => `<@${id}>`).join(" ")} — **${winner.game.name}**, <t:${winner.startUtc}:F>. Locked in.`,
+        content: `${winner.roster.map((id) => `<@${id}>`).join(" ")} — **${winner.game.name}**, <t:${winner.startUtc}:F>. Locked in.${eventNote}`,
         allowedMentions: { users: winner.roster },
       });
     }
