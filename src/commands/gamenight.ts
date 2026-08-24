@@ -15,6 +15,7 @@ import { listGames } from "../db/repos/games.js";
 import {
   cancelNight,
   createDraftNight,
+  getCancellableNightForChannel,
   getOpenNightForChannel,
 } from "../db/repos/nights.js";
 import {
@@ -87,7 +88,9 @@ export async function execute(
   }
 
   if (interaction.options.getSubcommand() === "cancel") {
-    const night = getOpenNightForChannel(ctx.db, interaction.channelId);
+    // Open or locked: a locked night still has a live Scheduled Event and
+    // roster to retract, so it must stay cancellable too.
+    const night = getCancellableNightForChannel(ctx.db, interaction.channelId);
     if (!night) {
       await interaction.reply({
         content: "No open game night in this channel.",

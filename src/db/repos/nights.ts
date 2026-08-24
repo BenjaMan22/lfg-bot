@@ -123,6 +123,23 @@ export function getOpenNightForChannel(
   return row ? toNight(row) : null;
 }
 
+/**
+ * Like `getOpenNightForChannel`, but also matches a night that has already
+ * locked. `/gamenight cancel` needs this: a locked night still has a live
+ * Scheduled Event and roster to retract, and `getOpenNightForChannel` means
+ * exactly "open" for its other callers — this is a separate read, not a
+ * loosening of that one.
+ */
+export function getCancellableNightForChannel(
+  db: DatabaseSync,
+  channelId: string,
+): NightRow | null {
+  const row = db
+    .prepare(`${NIGHT_COLUMNS} WHERE channel_id = ? AND status IN ('open', 'locked')`)
+    .get(channelId) as NightDbRow | undefined;
+  return row ? toNight(row) : null;
+}
+
 interface NightDayDbRow {
   day_index: number;
   window_start_utc: number;
@@ -347,7 +364,11 @@ export function lockNight(
 }
 
 export function failNight(db: DatabaseSync, nightId: number): void {
-  db.prepare("UPDATE nights SET status = 'failed' WHERE id = ?").run(nightId);
+  // Scoped to 'open': a night that already locked (or was cancelled) must
+  // never be downgraded to failed by a catch-all error handler.
+  db.prepare("UPDATE nights SET status = 'failed' WHERE id = ? AND status = 'open'").run(
+    nightId,
+  );
 }
 
 export function cancelNight(db: DatabaseSync, nightId: number): void {

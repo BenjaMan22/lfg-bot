@@ -7,7 +7,6 @@ export async function createScheduledEvent(
   night: NightRow,
   suggestion: Suggestion,
 ): Promise<string | null> {
-  const guild = await client.guilds.fetch(night.guildId);
   const base = {
     name: `${night.title}: ${suggestion.game.name}`,
     scheduledStartTime: new Date(suggestion.startUtc * 1000),
@@ -17,6 +16,9 @@ export async function createScheduledEvent(
   };
 
   try {
+    // Inside the try: a transient fetch failure (rate limit, a 5xx, the bot
+    // having been removed from the guild) must not lose the decision either.
+    const guild = await client.guilds.fetch(night.guildId);
     const event = night.voiceChannelId
       ? await guild.scheduledEvents.create({
           ...base,

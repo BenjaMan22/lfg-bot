@@ -11,7 +11,7 @@ import {
   getResponderIds,
   getVotes,
 } from "../db/repos/nights.js";
-import { renderPoll, type PollView } from "./render.js";
+import { renderPoll, type LockedDetails, type PollView } from "./render.js";
 
 const DEBOUNCE_MS = 1500;
 const pending = new Map<number, NodeJS.Timeout>();
@@ -57,25 +57,18 @@ export async function buildPollView(
     votes,
   });
 
-  const base = {
-    nightId,
-    title: night.title,
-    displayTz: night.displayTz,
-    deadlineUtc: night.deadlineUtc,
-    days,
-    games,
-    availability,
-    votes,
-    responderIds,
-    result,
-  };
-
+  // Build (and validate) any locked details before the Discord round trip
+  // below — fail loudly here rather than spend a member fetch on a view we
+  // are about to discard, or render a half-built locked view. A missing game
+  // is currently unreachable (FK protects the reference, lockNight is the
+  // only writer), but that is accidental, not designed; do not trust it.
+  let locked: LockedDetails | undefined;
   if (night.status === "locked") {
-    // Build (and validate) the locked details before any Discord API call —
-    // fail loudly here rather than render a half-built locked view. A missing
-    // game is currently unreachable (FK protects the reference, lockNight is
-    // the only writer), but that is accidental, not designed; do not trust it.
-    if (night.lockedGameId === null || night.lockedStartUtc === null || night.lockedEndUtc === null) {
+    if (
+      night.lockedGameId === null ||
+      night.lockedStartUtc === null ||
+      night.lockedEndUtc === null
+    ) {
       throw new Error(`Night ${nightId} is locked but is missing its locked fields`);
     }
     const [game] = getGamesByIds(db, [night.lockedGameId]);
@@ -86,19 +79,40 @@ export async function buildPollView(
     const roster = [...attendance.entries()]
       .filter(([, status]) => status === "in")
       .map(([userId]) => userId);
-
-    const pendingIds = await pendingMemberIds(client, night.guildId, night.channelId, responderIds);
-    return {
-      ...base,
-      status: "locked",
-      pendingIds,
-      locked: { startUtc: night.lockedStartUtc, endUtc: night.lockedEndUtc, game, roster },
-    };
+    locked = { startUtc: night.lockedStartUtc, endUtc: night.lockedEndUtc, game, roster };
   }
 
+  // One member fetch per build, shared by whichever branch returns below.
   const pendingIds = await pendingMemberIds(client, night.guildId, night.channelId, responderIds);
-  const status = night.status === "draft" ? "open" : night.status;
-  return { ...base, status, pendingIds };
+
+  const base = {
+    nightId,
+    title: night.title,
+    displayTz: night.displayTz,
+    deadlineUtc: night.deadlineUtc,
+    days,
+    games,
+    availability,
+    votes,
+    responderIds,
+    pendingIds,
+    result,
+  };
+
+  // Branch-specific returns (rather than a single `{ ...base, status }`) so
+  // each literal `status` narrows `base` to the matching member of the
+  // `PollView` union — a hoisted, widened `status: NightStatus` would type
+  // as the whole union and no longer satisfy any single variant.
+  if (locked) {
+    return { ...base, status: "locked", locked };
+  }
+  if (night.status === "failed") {
+    return { ...base, status: "failed" };
+  }
+  if (night.status === "cancelled") {
+    return { ...base, status: "cancelled" };
+  }
+  return { ...base, status: "open" };
 }
 
 export async function renderNightNow(
