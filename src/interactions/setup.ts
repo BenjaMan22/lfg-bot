@@ -52,6 +52,16 @@ export async function handlePostButton(
     return;
   }
 
+  // Everything past this point does Discord round trips — a channel fetch, a
+  // guild fetch and a FULL member fetch inside buildPollView, then the send
+  // itself — which on a cold cache runs past Discord's 3-second interaction
+  // window. Without deferring, the poll posts and publishNight commits, and
+  // only then does update() throw Unknown Interaction, so the host sees
+  // "This interaction failed" for an operation that entirely succeeded.
+  // The guards above are synchronous database reads, so they answer in time
+  // on their own.
+  await interaction.deferUpdate();
+
   // The create-time check is minutes old by now, and drafts deliberately do
   // not count against it — so a host who ran /gamenight create twice is
   // holding two live setups and could post both. Two polls in one channel
@@ -59,7 +69,7 @@ export async function handlePostButton(
   // that can only ever reach one of them.
   const alreadyOpen = getOpenNightForChannel(ctx.db, night.channelId);
   if (alreadyOpen) {
-    await interaction.update({
+    await interaction.editReply({
       content: `This channel already has a game night running: ${messageLink(night.guildId, night.channelId, alreadyOpen.messageId)}\nCancel that one with \`/gamenight cancel\` before posting another.`,
       components: [],
     });
@@ -89,12 +99,12 @@ export async function handlePostButton(
     await message.delete().catch((error: unknown) =>
       console.error("Could not remove an unpublished poll", { nightId, error }),
     );
-    await interaction.update({
+    await interaction.editReply({
       content: "Someone posted a game night in this channel first, so I took that one back down. Cancel theirs, or use this channel's poll.",
       components: [],
     });
     return;
   }
 
-  await interaction.update({ content: "Posted.", components: [] });
+  await interaction.editReply({ content: "Posted.", components: [] });
 }

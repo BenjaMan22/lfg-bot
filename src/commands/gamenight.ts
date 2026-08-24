@@ -112,11 +112,27 @@ export async function execute(
       return;
     }
     cancelNight(ctx.db, night.id);
-    if (night.eventId) {
-      await deleteScheduledEvent(interaction.client, night.guildId, night.eventId);
-    }
-    await renderNightNow(interaction.client, ctx.db, night.id);
+
+    // Answer before the Discord round trips, not after. The cancellation is
+    // already committed, so a slow event delete or a re-render of a poll
+    // whose message was deleted must not cost the host their confirmation —
+    // and past three seconds the reply would fail outright, telling them the
+    // command broke when it had in fact worked.
     await interaction.reply({ content: "Cancelled.", flags: MessageFlags.Ephemeral });
+
+    // Best-effort tidying. Failing here must not surface as the router's
+    // generic error on top of a "Cancelled." the user already has.
+    try {
+      if (night.eventId) {
+        await deleteScheduledEvent(interaction.client, night.guildId, night.eventId);
+      }
+      await renderNightNow(interaction.client, ctx.db, night.id);
+    } catch (error) {
+      console.error("Cancelled, but could not finish tidying up", {
+        nightId: night.id,
+        error,
+      });
+    }
     return;
   }
 
