@@ -114,6 +114,28 @@ describe("renderPoll", () => {
     expect(text).toContain("<@taylor>");
   });
 
+  it("still renders when far more people have not responded than fit in a field", () => {
+    // discord.js validates field values at addFields time and THROWS past
+    // 1024 characters, so an uncapped mention list crashed Post it outright
+    // in any channel with ~47 or more members.
+    const pendingIds = Array.from({ length: 200 }, (_, i) => `98765432109876${1000 + i}`);
+    const embed = renderPoll(openView({ pendingIds })).embeds[0].toJSON();
+    const responded = embed.fields?.find((f) => f.name.startsWith("Responded"));
+    expect(responded?.value.length).toBeLessThanOrEqual(1024);
+    expect(responded?.value).toContain("and 180 others");
+  });
+
+  it("caps a suggestion roster instead of overflowing the field", () => {
+    const hours = [days[0].startUtc, days[0].startUtc + 3600];
+    const users = Array.from({ length: 40 }, (_, i) => `98765432109876${1000 + i}`);
+    const availability = new Map(users.map((u) => [u, new Set(hours)]));
+    const votes = new Map(users.map((u) => [u, new Set([2])]));
+    const embed = renderPoll(openView({ availability, votes })).embeds[0].toJSON();
+    const best = embed.fields?.find((f) => f.name === "Best right now");
+    expect(best?.value.length).toBeLessThanOrEqual(1024);
+    expect(best?.value).toContain("and 32 others");
+  });
+
   it("offers the four response buttons while open", () => {
     const [row] = renderPoll(openView()).components;
     const ids = row.toJSON().components.map((c) => (c as { custom_id: string }).custom_id);

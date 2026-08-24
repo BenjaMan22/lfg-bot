@@ -14,6 +14,14 @@ export interface NightDay {
 }
 
 export const MAX_DAYS = 5;
+/**
+ * Longest evening window a night may cover. Not an arbitrary tidiness rule:
+ * every hour becomes a column in the poll's availability grid and an option
+ * in a per-day dropdown, and `12am-11pm` across five days pushes the grid
+ * past the 1024-character limit on an embed field — which discord.js rejects
+ * by throwing, so the poll would never post at all.
+ */
+export const MAX_WINDOW_HOURS = 16;
 
 const TIME = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i;
 
@@ -54,6 +62,12 @@ export function parseWindow(input: string): HourWindow {
   const endHour = parseClockHour(parts[1], input);
   if (startHour === endHour) {
     throw new TimeParseError("A game night window needs to be at least one hour long.");
+  }
+  const length = endHour > startHour ? endHour - startHour : 24 - startHour + endHour;
+  if (length > MAX_WINDOW_HOURS) {
+    throw new TimeParseError(
+      `A window can be at most ${MAX_WINDOW_HOURS} hours long, and "${input}" is ${length}. Narrow it to the hours people might actually play, like \`6pm-1am\`.`,
+    );
   }
   return { startHour, endHour };
 }

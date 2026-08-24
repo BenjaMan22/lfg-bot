@@ -71,6 +71,39 @@ const mention = (id: string) => `<@${id}>`;
 /** Discord renders these in each viewer's own local time. */
 const clock = (utc: number) => `<t:${utc}:t>`;
 
+/** Discord's hard limit on one embed field value. */
+const FIELD_LIMIT = 1024;
+/** Roughly 21 characters per mention, so 20 is about 440 characters. */
+const MENTION_CAP = 20;
+/** Three suggestions share one field, so their rosters get a tighter cap. */
+const SUGGESTION_MENTION_CAP = 8;
+
+/**
+ * A mention is ~21 characters, so an unbounded roster is a crash waiting for
+ * a big enough channel: discord.js validates field values at `addFields` time
+ * and throws SYNCHRONOUSLY past FIELD_LIMIT. At **Post it** every member but
+ * the host is a non-responder, so "channel visible to 47+ people" was enough
+ * to stop the poll ever being posted.
+ */
+function mentionList(ids: string[], cap: number): string {
+  const shown = ids.slice(0, cap).map(mention).join(" ");
+  const hidden = ids.length - cap;
+  return hidden > 0 ? `${shown} …and ${hidden} others` : shown;
+}
+
+/**
+ * The structural guarantee behind the caps above: whatever a field ends up
+ * containing, it can never be long enough to throw. Cuts on a space where it
+ * can, so a truncated list does not end mid-mention.
+ */
+function fitField(value: string): string {
+  if (value.length <= FIELD_LIMIT) return value;
+  const cut = value.slice(0, FIELD_LIMIT - 1);
+  const boundary = cut.lastIndexOf(" ");
+  const kept = boundary > FIELD_LIMIT / 2 ? cut.slice(0, boundary) : cut;
+  return `${kept.trimEnd()}…`;
+}
+
 function countsFor(day: NightDay, availability: Map<string, Set<number>>): number[] {
   return hoursIn(day).map((hour) => {
     let count = 0;
@@ -114,7 +147,7 @@ function suggestionLines(view: PollView): string {
           : "";
         return [
           `**${index + 1}. ${clock(s.startUtc)}–${clock(s.endUtc)} · ${s.game.name}** · ${s.roster.length} players${flag}`,
-          s.roster.map(mention).join(" "),
+          mentionList(s.roster, SUGGESTION_MENTION_CAP),
         ].join("\n");
       })
       .join("\n\n");
@@ -146,7 +179,7 @@ export function renderPoll(view: PollView): {
       )
       .addFields({
         name: `Playing (${view.locked.roster.length})`,
-        value: view.locked.roster.map(mention).join(" ") || "_nobody yet_",
+        value: fitField(mentionList(view.locked.roster, MENTION_CAP)) || "_nobody yet_",
       });
     return {
       embeds: [embed],
@@ -177,7 +210,7 @@ export function renderPoll(view: PollView): {
       );
     } else {
       embed.setDescription("**No viable night.** Closest misses:");
-      embed.addFields({ name: "Near misses", value: suggestionLines(view) });
+      embed.addFields({ name: "Near misses", value: fitField(suggestionLines(view)) });
     }
     return { embeds: [embed], components: [] };
   }
@@ -186,14 +219,14 @@ export function renderPoll(view: PollView): {
     .setColor(0x5865f2)
     .setDescription(`Deadline <t:${view.deadlineUtc}:R>`)
     .addFields(
-      { name: "Availability", value: grid(view) },
-      { name: "Games", value: gameLine(view) },
-      { name: "Best right now", value: suggestionLines(view) },
+      { name: "Availability", value: fitField(grid(view)) },
+      { name: "Games", value: fitField(gameLine(view)) },
+      { name: "Best right now", value: fitField(suggestionLines(view)) },
       {
         name: `Responded: ${view.responderIds.size}`,
         value:
           view.pendingIds.length > 0
-            ? `No response: ${view.pendingIds.map(mention).join(" ")}`
+            ? fitField(`No response: ${mentionList(view.pendingIds, MENTION_CAP)}`)
             : "Everyone has answered.",
       },
     );

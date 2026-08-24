@@ -44,6 +44,21 @@ describe("parseWindow", () => {
   it("rejects gibberish", () => {
     expect(() => parseWindow("evening")).toThrow(TimeParseError);
   });
+
+  it("rejects a window longer than the maximum", () => {
+    // 23 hours across 5 days would push the availability grid past the
+    // 1024-character embed field limit, which throws rather than truncates.
+    expect(() => parseWindow("12am-11pm")).toThrow(TimeParseError);
+    expect(() => parseWindow("12am-11pm")).toThrow(/at most 16 hours/i);
+  });
+
+  it("rejects an over-long window that crosses midnight", () => {
+    expect(() => parseWindow("6pm-11am")).toThrow(/at most 16 hours/i);
+  });
+
+  it("accepts a window exactly at the maximum", () => {
+    expect(parseWindow("6am-10pm")).toEqual({ startHour: 6, endHour: 22 });
+  });
 });
 
 describe("parseDays", () => {
