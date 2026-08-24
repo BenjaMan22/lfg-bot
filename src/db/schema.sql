@@ -42,6 +42,15 @@ CREATE TABLE IF NOT EXISTS nights (
 
 CREATE INDEX IF NOT EXISTS nights_due ON nights (status, deadline_utc);
 
+-- One open night per channel, enforced by the database rather than by a
+-- check at /gamenight create. Two hosts (or one host running create twice)
+-- each hold their own ephemeral setup message and can both press Post it;
+-- without this the channel ends up with two live polls, two deadline
+-- sweeps, two Scheduled Events, and a cancel that can only ever reach one
+-- of them. Partial, so drafts and finished nights are unaffected.
+CREATE UNIQUE INDEX IF NOT EXISTS nights_one_open_per_channel
+  ON nights (channel_id) WHERE status = 'open';
+
 CREATE TABLE IF NOT EXISTS night_days (
   night_id         INTEGER NOT NULL REFERENCES nights(id) ON DELETE CASCADE,
   day_index        INTEGER NOT NULL,

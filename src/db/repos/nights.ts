@@ -214,15 +214,27 @@ export function getNightGameIds(db: DatabaseSync, nightId: number): number[] {
   return rows.map((r) => r.game_id);
 }
 
+/**
+ * Flip a draft to open. Returns false when nothing was updated — the night
+ * was already published, cancelled, or swept away as a stale draft — so the
+ * caller can undo whatever it did on the assumption this would succeed.
+ *
+ * The `status = 'draft'` guard is what stops two clicks of **Post it** on the
+ * same setup message both publishing. The one-open-night-per-channel index
+ * covers the other half (two different drafts racing) by throwing.
+ */
 export function publishNight(
   db: DatabaseSync,
   nightId: number,
   messageId: string,
-): void {
-  db.prepare("UPDATE nights SET status = 'open', message_id = ? WHERE id = ?").run(
-    messageId,
-    nightId,
-  );
+): boolean {
+  const result = db
+    .prepare(
+      "UPDATE nights SET status = 'open', message_id = ? WHERE id = ? AND status = 'draft'",
+    )
+    .run(messageId, nightId);
+  // node:sqlite types `changes` as number | bigint, like lastInsertRowid.
+  return Number(result.changes) === 1;
 }
 
 interface AvailabilityDbRow {

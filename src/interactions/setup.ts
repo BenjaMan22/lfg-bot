@@ -1,8 +1,25 @@
 import { MessageFlags, type ButtonInteraction, type StringSelectMenuInteraction } from "discord.js";
 import type { AppContext } from "../context.js";
-import { getNight, getNightGameIds, publishNight, setNightGames } from "../db/repos/nights.js";
+import {
+  getNight,
+  getNightGameIds,
+  getOpenNightForChannel,
+  publishNight,
+  setNightGames,
+} from "../db/repos/nights.js";
 import { buildPollView } from "../discord/updateQueue.js";
 import { renderPoll } from "../discord/render.js";
+
+/** A jump link to a poll, or a plain description when we never stored one. */
+function messageLink(
+  guildId: string,
+  channelId: string,
+  messageId: string | null,
+): string {
+  return messageId
+    ? `https://discord.com/channels/${guildId}/${channelId}/${messageId}`
+    : "(its message is missing)";
+}
 
 export async function handleSetupSelect(
   interaction: StringSelectMenuInteraction,
@@ -35,13 +52,49 @@ export async function handlePostButton(
     return;
   }
 
+  // The create-time check is minutes old by now, and drafts deliberately do
+  // not count against it — so a host who ran /gamenight create twice is
+  // holding two live setups and could post both. Two polls in one channel
+  // means two sweeps, two Scheduled Events, two roster pings, and a cancel
+  // that can only ever reach one of them.
+  const alreadyOpen = getOpenNightForChannel(ctx.db, night.channelId);
+  if (alreadyOpen) {
+    await interaction.update({
+      content: `This channel already has a game night running: ${messageLink(night.guildId, night.channelId, alreadyOpen.messageId)}\nCancel that one with \`/gamenight cancel\` before posting another.`,
+      components: [],
+    });
+    return;
+  }
+
   const channel = await interaction.client.channels.fetch(night.channelId);
   if (!channel?.isTextBased() || !("send" in channel)) throw new Error("Channel is not sendable");
 
   const view = await buildPollView(interaction.client, ctx.db, nightId);
   if (!view) throw new Error(`Night ${nightId} vanished`);
   const message = await channel.send(renderPoll(view));
-  publishNight(ctx.db, nightId, message.id);
+
+  // The message is out before the row flips, so if the flip fails the poll
+  // has to be taken back down — an unpublished night is never swept, never
+  // locks, and never updates, so leaving it visible is worse than deleting it.
+  let published: boolean;
+  try {
+    published = publishNight(ctx.db, nightId, message.id);
+  } catch (error) {
+    // nights_one_open_per_channel fired: another draft was published between
+    // the check above and here.
+    console.error("Could not publish night", { nightId, error });
+    published = false;
+  }
+  if (!published) {
+    await message.delete().catch((error: unknown) =>
+      console.error("Could not remove an unpublished poll", { nightId, error }),
+    );
+    await interaction.update({
+      content: "Someone posted a game night in this channel first, so I took that one back down. Cancel theirs, or use this channel's poll.",
+      components: [],
+    });
+    return;
+  }
 
   await interaction.update({ content: "Posted.", components: [] });
 }

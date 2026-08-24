@@ -76,6 +76,31 @@ describe("nights repository", () => {
     expect(night?.messageId).toBe("m1");
   });
 
+  it("refuses to publish the same draft twice", () => {
+    const id = makeDraft();
+    expect(publishNight(db, id, "m1")).toBe(true);
+    expect(publishNight(db, id, "m2")).toBe(false);
+    expect(getNight(db, id)?.messageId).toBe("m1");
+  });
+
+  it("refuses a second open night in the same channel", () => {
+    const first = makeDraftIn("c5");
+    const second = makeDraftIn("c5");
+    publishNight(db, first, "m1");
+    expect(() => publishNight(db, second, "m2")).toThrow();
+    expect(getOpenNightForChannel(db, "c5")?.id).toBe(first);
+  });
+
+  it("lets a channel open a new night once the previous one is finished", () => {
+    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const first = makeDraftIn("c5");
+    publishNight(db, first, "m1");
+    lockNight(db, first, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1");
+    const second = makeDraftIn("c5");
+    expect(publishNight(db, second, "m2")).toBe(true);
+    expect(getOpenNightForChannel(db, "c5")?.id).toBe(second);
+  });
+
   it("replaces the game set rather than appending", () => {
     const id = makeDraft();
     const a = addGame(db, "g1", "A", 1, null, "u1");
