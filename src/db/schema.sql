@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS nights (
   locked_end_utc    INTEGER,
   locked_game_id    INTEGER REFERENCES games(id),
   event_id          TEXT,
+  failure_reason    TEXT,
   created_utc       INTEGER NOT NULL
 );
 

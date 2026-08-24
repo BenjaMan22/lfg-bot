@@ -13,6 +13,14 @@ import { createScheduledEvent } from "../discord/events.js";
 
 const SWEEP_MS = 30_000;
 const DRAFT_TTL_SECONDS = 3600;
+/**
+ * How long past its deadline a night keeps being retried when locking throws
+ * for infrastructure reasons. A wall-clock window rather than an attempt
+ * counter because it needs no extra state and, unlike an in-memory counter,
+ * it survives a restart — a bot that crash-loops at a deadline would
+ * otherwise reset its budget on every boot and retry forever.
+ */
+const LOCK_RETRY_GRACE_SECONDS = 30 * 60;
 
 async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promise<void> {
   const view = await buildPollView(client, db, night.id);
@@ -20,7 +28,8 @@ async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promi
   const winner = view.result.top[0];
 
   if (!winner) {
-    failNight(db, night.id);
+    // The one genuine domain failure: the ranking cleared no game's minimum.
+    failNight(db, night.id, "no_viable");
     await renderNightNow(client, db, night.id);
     return;
   }
@@ -64,11 +73,27 @@ export async function processDueNights(
     try {
       await lockOne(client, db, night);
     } catch (error) {
-      // One bad night must not stop the others, and must not retry forever.
-      // failNight is scoped to status='open', so this cannot downgrade a
-      // night that lockOne already committed as locked.
-      console.error("Locking failed", { nightId: night.id, error });
-      failNight(db, night.id);
+      // Everything reaching here is an INFRASTRUCTURE error. "Nothing is
+      // viable" is a domain result from rankNight and lockOne handles it
+      // above without throwing, so this catch never sees it. The reachable
+      // trigger is pendingMemberIds -> guild.members.fetch(), a gateway op
+      // that rejects on GuildMembersTimeout or a reconnect. One hiccup at a
+      // deadline must not discard a correctly-computed decision, so leave the
+      // night 'open' and let the next 30-second sweep retry it.
+      const giveUp = nowUtc > night.deadlineUtc + LOCK_RETRY_GRACE_SECONDS;
+      console.error(giveUp ? "Locking failed; giving up" : "Locking failed; will retry", {
+        nightId: night.id,
+        deadlineUtc: night.deadlineUtc,
+        nowUtc,
+        error,
+      });
+      if (!giveUp) continue;
+
+      // Past the retry window. Stop, and say what actually happened rather
+      // than telling the channel nothing was viable. failNight is scoped to
+      // status='open', so this cannot downgrade a night lockOne already
+      // committed as locked.
+      failNight(db, night.id, "lock_error");
       // Best-effort: tell the channel the poll is dead rather than leaving it
       // showing a live countdown and response buttons. If the render is what
       // failed, this must not throw again.

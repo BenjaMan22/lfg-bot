@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { renderPoll, type LockedDetails, type PollView } from "./render.js";
+import {
+  renderPoll,
+  type FailureReason,
+  type LockedDetails,
+  type PollView,
+} from "./render.js";
 import { expandDays } from "../domain/timeblocks.js";
 import { rankNight } from "../domain/scheduling.js";
 import type { Game, SchedulingResult } from "../domain/scheduling.js";
@@ -40,8 +45,11 @@ function openView(over: BaseOverrides = {}): PollView {
   return { ...baseFields(over), status: "open" };
 }
 
-function failedView(over: BaseOverrides = {}): PollView {
-  return { ...baseFields(over), status: "failed" };
+function failedView(
+  over: BaseOverrides = {},
+  failureReason: FailureReason | null = "no_viable",
+): PollView {
+  return { ...baseFields(over), status: "failed", failureReason };
 }
 
 function lockedView(locked: LockedDetails, over: BaseOverrides = {}): PollView {
@@ -147,6 +155,14 @@ describe("renderPoll", () => {
       renderPoll(failedView({ availability, votes, result })).embeds[0].toJSON(),
     );
     expect(text).toMatch(/needs 2/);
+  });
+
+  it("says the lock failed, not that nothing was viable, after a lock error", () => {
+    const text = JSON.stringify(
+      renderPoll(failedView({}, "lock_error")).embeds[0].toJSON(),
+    );
+    expect(text).toMatch(/could not lock/i);
+    expect(text).not.toMatch(/no viable night/i);
   });
 
   it("shows no buttons at all on a failed night", () => {

@@ -107,7 +107,7 @@ export async function buildPollView(
     return { ...base, status: "locked", locked };
   }
   if (night.status === "failed") {
-    return { ...base, status: "failed" };
+    return { ...base, status: "failed", failureReason: night.failureReason };
   }
   if (night.status === "cancelled") {
     return { ...base, status: "cancelled" };

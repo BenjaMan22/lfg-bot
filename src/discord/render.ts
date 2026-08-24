@@ -43,8 +43,17 @@ export interface LockedPollView extends PollViewBase {
   locked: LockedDetails;
 }
 
+/**
+ * Mirrors the repository's NightFailureReason. Declared here rather than
+ * imported because render.ts must not depend on src/db — the same reason
+ * `status` is a local literal union too. Null covers a night failed before
+ * the column existed.
+ */
+export type FailureReason = "no_viable" | "lock_error";
+
 export interface FailedPollView extends PollViewBase {
   status: "failed";
+  failureReason: FailureReason | null;
 }
 
 export interface CancelledPollView extends PollViewBase {
@@ -157,14 +166,17 @@ export function renderPoll(view: PollView): {
   }
 
   if (view.status === "failed" || view.status === "cancelled") {
-    embed
-      .setColor(0x95a5a6)
-      .setDescription(
-        view.status === "cancelled"
-          ? "**Cancelled** by the host."
-          : "**No viable night.** Closest misses:",
+    embed.setColor(0x95a5a6);
+    if (view.status === "cancelled") {
+      embed.setDescription("**Cancelled** by the host.");
+    } else if (view.failureReason === "lock_error") {
+      // An infrastructure give-up, not a scheduling outcome. Saying "no
+      // viable night" here would be a lie about the players' answers.
+      embed.setDescription(
+        "**I could not lock this night in.** Something kept going wrong talking to Discord at the deadline, and I stopped retrying. Nothing was scheduled — start a fresh one with `/gamenight create`.",
       );
-    if (view.status === "failed") {
+    } else {
+      embed.setDescription("**No viable night.** Closest misses:");
       embed.addFields({ name: "Near misses", value: suggestionLines(view) });
     }
     return { embeds: [embed], components: [] };

@@ -7,6 +7,7 @@ import {
   createDraftNight,
   dueNights,
   deleteStaleDrafts,
+  failNight,
   getAvailability,
   getCancellableNightForChannel,
   getNight,
@@ -156,6 +157,24 @@ describe("nights repository", () => {
     expect(dueNights(db, DAYS[0].endUtc)).toEqual([]);
     expect(getNight(db, id)?.status).toBe("locked");
     expect(getNight(db, id)?.eventId).toBe("e1");
+  });
+
+  it("records why a night failed", () => {
+    const id = makeDraft();
+    publishNight(db, id, "m1");
+    failNight(db, id, "lock_error");
+    expect(getNight(db, id)?.status).toBe("failed");
+    expect(getNight(db, id)?.failureReason).toBe("lock_error");
+  });
+
+  it("never downgrades a locked night to failed", () => {
+    const id = makeDraft();
+    publishNight(db, id, "m1");
+    const game = addGame(db, "g1", "A", 1, null, "u1");
+    lockNight(db, id, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1");
+    failNight(db, id, "lock_error");
+    expect(getNight(db, id)?.status).toBe("locked");
+    expect(getNight(db, id)?.failureReason).toBeNull();
   });
 
   it("deletes stale drafts and nothing else", () => {

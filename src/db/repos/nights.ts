@@ -4,6 +4,15 @@ import { allRows, withTransaction } from "../index.js";
 
 export type NightStatus = "draft" | "open" | "locked" | "failed" | "cancelled";
 
+/**
+ * Why a night ended up `failed`. `no_viable` is the domain outcome — the
+ * ranking found no combination clearing any game's minimum. `lock_error` is
+ * an infrastructure give-up: the lock kept throwing past its retry window.
+ * The two say very different things to a channel, so they are stored rather
+ * than inferred at render time.
+ */
+export type NightFailureReason = "no_viable" | "lock_error";
+
 export interface NightRow {
   id: number;
   guildId: string;
@@ -20,6 +29,7 @@ export interface NightRow {
   lockedEndUtc: number | null;
   lockedGameId: number | null;
   eventId: string | null;
+  failureReason: NightFailureReason | null;
 }
 
 export interface CreateNightInput {
@@ -51,6 +61,7 @@ interface NightDbRow {
   locked_end_utc: number | null;
   locked_game_id: number | null;
   event_id: string | null;
+  failure_reason: NightFailureReason | null;
 }
 
 const toNight = (r: NightDbRow): NightRow => ({
@@ -69,11 +80,13 @@ const toNight = (r: NightDbRow): NightRow => ({
   lockedEndUtc: r.locked_end_utc,
   lockedGameId: r.locked_game_id,
   eventId: r.event_id,
+  failureReason: r.failure_reason,
 });
 
 const NIGHT_COLUMNS = `SELECT id, guild_id, channel_id, message_id, host_id, title,
   display_tz, min_session_hours, deadline_utc, status, voice_channel_id,
-  locked_start_utc, locked_end_utc, locked_game_id, event_id FROM nights`;
+  locked_start_utc, locked_end_utc, locked_game_id, event_id, failure_reason
+  FROM nights`;
 
 export function createDraftNight(db: DatabaseSync, input: CreateNightInput): number {
   return withTransaction(db, () => {
@@ -381,12 +394,16 @@ export function lockNight(
   ).run(startUtc, endUtc, gameId, eventId, nightId);
 }
 
-export function failNight(db: DatabaseSync, nightId: number): void {
+export function failNight(
+  db: DatabaseSync,
+  nightId: number,
+  reason: NightFailureReason,
+): void {
   // Scoped to 'open': a night that already locked (or was cancelled) must
   // never be downgraded to failed by a catch-all error handler.
-  db.prepare("UPDATE nights SET status = 'failed' WHERE id = ? AND status = 'open'").run(
-    nightId,
-  );
+  db.prepare(
+    "UPDATE nights SET status = 'failed', failure_reason = ? WHERE id = ? AND status = 'open'",
+  ).run(reason, nightId);
 }
 
 export function cancelNight(db: DatabaseSync, nightId: number): void {

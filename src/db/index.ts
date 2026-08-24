@@ -5,10 +5,31 @@ import { fileURLToPath } from "node:url";
 
 const schemaPath = fileURLToPath(new URL("./schema.sql", import.meta.url));
 
+/**
+ * schema.sql is all `CREATE ... IF NOT EXISTS`, which creates missing tables
+ * but never alters an existing one — so a column added to a CREATE TABLE
+ * never reaches a database that already exists. These are the additive
+ * column migrations, applied idempotently on every open.
+ */
+const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
+  { table: "nights", column: "failure_reason", definition: "TEXT" },
+];
+
+function applyAddedColumns(db: DatabaseSync): void {
+  for (const { table, column, definition } of ADDED_COLUMNS) {
+    const existing = db.prepare(`PRAGMA table_info(${table})`).all() as unknown as {
+      name: string;
+    }[];
+    if (existing.some((c) => c.name === column)) continue;
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
 export function openDatabase(path: string): DatabaseSync {
   if (path !== ":memory:") mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
   db.exec(readFileSync(schemaPath, "utf8"));
+  applyAddedColumns(db);
   return db;
 }
 
