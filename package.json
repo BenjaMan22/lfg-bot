@@ -11,7 +11,8 @@
     "build": "tsc && node -e \"require('fs').copyFileSync('src/db/schema.sql','dist/src/db/schema.sql')\"",
     "start": "node --env-file=.env dist/src/index.js",
     "deploy": "node --env-file=.env --import tsx scripts/deploy-commands.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json"
   },
   "keywords": [],
   "type": "module",

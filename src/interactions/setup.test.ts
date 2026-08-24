@@ -46,7 +46,9 @@ describe("buildGameSetupComponents", () => {
 
   it("includes the add-a-game and post-it buttons", () => {
     const [, buttonRow] = buildGameSetupComponents(9, [catan], []);
-    const customIds = buttonRow.toJSON().components.map((c) => c.custom_id);
+    const customIds = buttonRow
+      .toJSON()
+      .components.map((c) => ("custom_id" in c ? c.custom_id : undefined));
     expect(customIds).toEqual(["gn:setupadd:9", "gn:post:9"]);
   });
 });
