@@ -187,7 +187,20 @@ git clone <this repo> && cd discord-bots
 cp .env.example .env   # fill it in, as above
 mkdir -p data && sudo chown -R 1000:1000 data   # see note below
 docker compose up -d --build
+docker compose run --rm gamenight node dist/scripts/deploy-commands.js
 ```
+
+**That last line is not optional.** The container's `CMD` only starts the
+bot — nothing in it registers the slash commands — and a Docker-only VPS
+has no host Node to run `npm run deploy` with. Skip it and the bot comes
+online with no commands at all: it looks connected and does nothing. The
+compiled registration script ships inside the image already
+(`dist/scripts/deploy-commands.js`), and `docker compose run` hands it the
+same `.env` the bot gets, so that one-liner is the containerised equivalent
+of `npm run deploy`.
+
+Re-run it after **any change to a command's definition** — its name,
+description, or options. See "Two things to remember" below.
 
 The compose file mounts `./data` into the container at `/app/data`. That
 bind mount is what makes the SQLite database survive a redeploy — the
@@ -204,8 +217,10 @@ permissions problem.
 
 ## Two things to remember
 
-- **`npm run deploy` only needs to be re-run when a command's *definition*
-  changes** — its name, description, or options (anything in a
+- **Command registration only needs to be re-run when a command's
+  *definition* changes** — `npm run deploy` locally, or `docker compose run
+  --rm gamenight node dist/scripts/deploy-commands.js` on the VPS. A
+  definition is its name, description, or options (anything in a
   `SlashCommandBuilder` under `src/commands/`). Changes to what a command
   *does* (handler logic) take effect the next time the bot process starts
   — no re-registration needed.
