@@ -1,12 +1,8 @@
 import {
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ChannelType,
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
-  StringSelectMenuBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
 import { DateTime } from "luxon";
@@ -28,6 +24,7 @@ import {
 import { deleteScheduledEvent } from "../discord/events.js";
 import { renderNightNow } from "../discord/updateQueue.js";
 import { requireTimezone } from "../discord/timezonePicker.js";
+import { buildGameSetupComponents } from "../interactions/setup.js";
 
 export const data = new SlashCommandBuilder()
   .setName("gamenight")
@@ -196,31 +193,6 @@ export async function execute(
   await interaction.reply({
     content: "Pick the games for this night, then post it.",
     flags: MessageFlags.Ephemeral,
-    components: [
-      new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId(`gn:setup:${nightId}`)
-          .setPlaceholder("Games")
-          .setMinValues(0)
-          .setMaxValues(Math.min(library.length, 25))
-          .addOptions(
-            library.slice(0, 25).map((g) => ({
-              label: g.name.slice(0, 100),
-              description: `${g.minPlayers}–${g.maxPlayers ?? "∞"} players`,
-              value: String(g.id),
-            })),
-          ),
-      ),
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`gn:setupadd:${nightId}`)
-          .setLabel("Add a game")
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId(`gn:post:${nightId}`)
-          .setLabel("Post it")
-          .setStyle(ButtonStyle.Success),
-      ),
-    ],
+    components: buildGameSetupComponents(nightId, library, []),
   });
 }

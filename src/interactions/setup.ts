@@ -1,5 +1,14 @@
-import { MessageFlags, type ButtonInteraction, type StringSelectMenuInteraction } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+  StringSelectMenuBuilder,
+  type ButtonInteraction,
+  type StringSelectMenuInteraction,
+} from "discord.js";
 import type { AppContext } from "../context.js";
+import type { Game } from "../domain/scheduling.js";
 import {
   getNight,
   getNightGameIds,
@@ -19,6 +28,48 @@ function messageLink(
   return messageId
     ? `https://discord.com/channels/${guildId}/${channelId}/${messageId}`
     : "(its message is missing)";
+}
+
+/**
+ * The setup select and its buttons. Built fresh from the current library and
+ * the night's current picks — rather than once at `/gamenight create` time —
+ * so a game added later via **Add a game** shows up (and is pre-selected)
+ * the next time this message is rendered, instead of being silently dropped
+ * the next time the host adjusts their picks.
+ */
+export function buildGameSetupComponents(
+  nightId: number,
+  library: Game[],
+  chosenIds: number[],
+): [ActionRowBuilder<StringSelectMenuBuilder>, ActionRowBuilder<ButtonBuilder>] {
+  const chosen = new Set(chosenIds);
+  return [
+    new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`gn:setup:${nightId}`)
+        .setPlaceholder("Games")
+        .setMinValues(0)
+        .setMaxValues(Math.min(library.length, 25))
+        .addOptions(
+          library.slice(0, 25).map((g) => ({
+            label: g.name.slice(0, 100),
+            description: `${g.minPlayers}–${g.maxPlayers ?? "∞"} players`,
+            value: String(g.id),
+            default: chosen.has(g.id),
+          })),
+        ),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`gn:setupadd:${nightId}`)
+        .setLabel("Add a game")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`gn:post:${nightId}`)
+        .setLabel("Post it")
+        .setStyle(ButtonStyle.Success),
+    ),
+  ];
 }
 
 export async function handleSetupSelect(

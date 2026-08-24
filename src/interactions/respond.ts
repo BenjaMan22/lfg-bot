@@ -10,7 +10,8 @@ import {
   type StringSelectMenuInteraction,
 } from "discord.js";
 import type { AppContext } from "../context.js";
-import { addGame, findGameByName, getGamesByIds } from "../db/repos/games.js";
+import { addGame, findGameByName, getGamesByIds, listGames } from "../db/repos/games.js";
+import { buildGameSetupComponents } from "./setup.js";
 import {
   clearUserResponses,
   getAvailability,
@@ -241,10 +242,25 @@ export async function handleSuggestModal(
   const votes = getVotes(ctx.db, nightId).get(interaction.user.id) ?? new Set<number>();
   setVotes(ctx.db, nightId, interaction.user.id, [...new Set([...votes, game.id])]);
 
-  await interaction.reply({
-    content: `Added **${game.name}** (${game.minPlayers}–${game.maxPlayers ?? "∞"}) and voted you for it.`,
-    flags: MessageFlags.Ephemeral,
-  });
+  const confirmation = `Added **${game.name}** (${game.minPlayers}–${game.maxPlayers ?? "∞"}) and voted you for it.`;
+
+  // The setup select's options are built from the library at the moment
+  // /gamenight create ran and never rebuilt on their own — so a game added
+  // here, mid-setup, would otherwise never appear in it, and the host's next
+  // pick would silently drop it. While the night is still a draft, rebuild
+  // the select (with the host's current picks preserved) into the same
+  // ephemeral setup message rather than leaving it stale.
+  if (night.status === "draft" && interaction.isFromMessage()) {
+    const library = listGames(ctx.db, night.guildId);
+    const chosenIds = getNightGameIds(ctx.db, nightId);
+    await interaction.update({
+      content: `${confirmation}\n\nPick the games for this night, then post it.`,
+      components: buildGameSetupComponents(nightId, library, chosenIds),
+    });
+    return;
+  }
+
+  await interaction.reply({ content: confirmation, flags: MessageFlags.Ephemeral });
   queueRender(interaction.client, ctx.db, nightId);
 }
 
