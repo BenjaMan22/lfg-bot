@@ -215,6 +215,11 @@ export function renderPoll(view: PollView): {
       embed.setDescription(
         "**I could not lock this night in.** Something kept going wrong talking to Discord at the deadline, and I stopped retrying. Nothing was scheduled — start a fresh one with `/gamenight create`.",
       );
+    } else if (view.responderIds.size === 0) {
+      // Distinct from "we computed some near misses and none worked" — here
+      // there is nothing to compute from at all, so say that plainly rather
+      // than falling through to the near-miss placeholder.
+      embed.setDescription("**No viable night.** Nobody responded before the deadline.");
     } else {
       embed.setDescription("**No viable night.** Closest misses:");
       embed.addFields({ name: "Near misses", value: fitField(suggestionLines(view)) });

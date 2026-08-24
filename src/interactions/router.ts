@@ -78,8 +78,17 @@ export async function routeInteraction(
       if (action === "suggestmodal") return await handleSuggestModal(interaction, ctx, Number(args[0]));
     }
   } catch (error) {
+    // interaction.id correlates to nothing a human can act on. The night id
+    // encoded in customId — gn:<action>:<nightId>[:...] for every handler
+    // that has one — points straight at the actual poll, so log that
+    // instead where it's available.
+    const customId =
+      interaction.isMessageComponent() || interaction.isModalSubmit()
+        ? interaction.customId
+        : null;
+    const nightId = customId ? (parseCustomId(customId).args[0] ?? null) : null;
     console.error("Interaction failed", {
-      id: interaction.id,
+      nightId,
       type: interaction.type,
       error,
     });

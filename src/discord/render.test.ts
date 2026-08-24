@@ -210,6 +210,16 @@ describe("renderPoll", () => {
     expect(text).toMatch(/needs 2/);
   });
 
+  it("plainly says nobody answered when a night fails with zero responses", () => {
+    // Previously this fell through to the near-miss placeholder text
+    // ("Closest misses:" followed by "Nothing yet — no responses yet."),
+    // which reads oddly stacked and conflates "nobody answered" with "we
+    // computed near misses and none worked."
+    const text = JSON.stringify(renderPoll(failedView()).embeds[0].toJSON());
+    expect(text).toMatch(/nobody responded/i);
+    expect(text).not.toMatch(/nothing yet/i);
+  });
+
   it("says the lock failed, not that nothing was viable, after a lock error", () => {
     const text = JSON.stringify(
       renderPoll(failedView({}, "lock_error")).embeds[0].toJSON(),
