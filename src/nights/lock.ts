@@ -22,6 +22,29 @@ const DRAFT_TTL_SECONDS = 3600;
  */
 const LOCK_RETRY_GRACE_SECONDS = 30 * 60;
 
+/**
+ * Whether processDueNights should stop retrying an infrastructure failure
+ * and mark the night failed. The grace window is anchored to whichever is
+ * later: the night's own deadline, or processStartUtc (when this sweep
+ * first attempted the night, captured once in startSweep). Anchoring to the
+ * deadline alone would let the boot-time catch-up pass give up on its very
+ * first attempt whenever the bot was down past a night's deadline for
+ * longer than the grace window — exactly the scenario that pass exists to
+ * handle. Anchoring to processStartUtc alone (with no deadline floor) would
+ * let a bug that always throws retry forever across restarts, since a fresh
+ * boot resets processStartUtc; Math.max keeps the 30-minute ceiling in that
+ * case while still giving a night that came due during downtime a full
+ * retry budget from when the sweep first saw it.
+ */
+export function shouldGiveUp(
+  deadlineUtc: number,
+  processStartUtc: number,
+  nowUtc: number,
+  graceSeconds: number,
+): boolean {
+  return nowUtc > Math.max(deadlineUtc, processStartUtc) + graceSeconds;
+}
+
 async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promise<void> {
   const view = await buildPollView(client, db, night.id);
   if (!view) return;
@@ -75,6 +98,7 @@ export async function processDueNights(
   client: Client,
   db: DatabaseSync,
   nowUtc: number,
+  processStartUtc: number,
 ): Promise<void> {
   deleteStaleDrafts(db, nowUtc - DRAFT_TTL_SECONDS);
   for (const night of dueNights(db, nowUtc)) {
@@ -88,10 +112,11 @@ export async function processDueNights(
       // that rejects on GuildMembersTimeout or a reconnect. One hiccup at a
       // deadline must not discard a correctly-computed decision, so leave the
       // night 'open' and let the next 30-second sweep retry it.
-      const giveUp = nowUtc > night.deadlineUtc + LOCK_RETRY_GRACE_SECONDS;
+      const giveUp = shouldGiveUp(night.deadlineUtc, processStartUtc, nowUtc, LOCK_RETRY_GRACE_SECONDS);
       console.error(giveUp ? "Locking failed; giving up" : "Locking failed; will retry", {
         nightId: night.id,
         deadlineUtc: night.deadlineUtc,
+        processStartUtc,
         nowUtc,
         error,
       });
@@ -113,6 +138,11 @@ export async function processDueNights(
 }
 
 export function startSweep(client: Client, db: DatabaseSync): NodeJS.Timeout {
+  // Captured once, not inside run(): this is when the sweep first attempted
+  // each night, which is what the retry grace window in shouldGiveUp needs
+  // to anchor to. Recomputing it every tick would reset the budget on every
+  // sweep and defeat the whole point.
+  const processStartUtc = Math.floor(Date.now() / 1000);
   let running = false;
   const run = () => {
     // A pass does several Discord round trips (including full member
@@ -120,7 +150,7 @@ export function startSweep(client: Client, db: DatabaseSync): NodeJS.Timeout {
     // double-lock a night that hasn't committed yet.
     if (running) return;
     running = true;
-    processDueNights(client, db, Math.floor(Date.now() / 1000))
+    processDueNights(client, db, Math.floor(Date.now() / 1000), processStartUtc)
       .catch((error) => console.error("Sweep failed", error))
       .finally(() => {
         running = false;
