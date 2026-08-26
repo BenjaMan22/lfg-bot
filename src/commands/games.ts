@@ -5,34 +5,13 @@ import {
   type ChatInputCommandInteraction,
 } from "discord.js";
 import type { AppContext } from "../context.js";
-import { addGame, findGameByName, listGames, removeGame } from "../db/repos/games.js";
+import { listGames, removeGame } from "../db/repos/games.js";
+import { buildGameAddModal } from "../interactions/games.js";
 
 export const data = new SlashCommandBuilder()
   .setName("games")
   .setDescription("Manage this server's game library")
-  .addSubcommand((s) =>
-    s
-      .setName("add")
-      .setDescription("Add a game")
-      .addStringOption((o) =>
-        o.setName("name").setDescription("Game name").setRequired(true).setMaxLength(80),
-      )
-      .addIntegerOption((o) =>
-        o
-          .setName("min")
-          .setDescription("Fewest players it works with")
-          .setRequired(true)
-          .setMinValue(1)
-          .setMaxValue(100),
-      )
-      .addIntegerOption((o) =>
-        o
-          .setName("max")
-          .setDescription("Most players it supports (leave empty for unlimited)")
-          .setMinValue(1)
-          .setMaxValue(100),
-      ),
-  )
+  .addSubcommand((s) => s.setName("add").setDescription("Add a game"))
   .addSubcommand((s) => s.setName("list").setDescription("List the library"))
   .addSubcommand((s) =>
     s
@@ -59,29 +38,7 @@ export async function execute(
   const subcommand = interaction.options.getSubcommand();
 
   if (subcommand === "add") {
-    const name = interaction.options.getString("name", true).trim();
-    const min = interaction.options.getInteger("min", true);
-    const max = interaction.options.getInteger("max");
-
-    if (max !== null && max < min) {
-      await interaction.reply({
-        content: `**max** (${max}) cannot be below **min** (${min}).`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    if (findGameByName(ctx.db, guildId, name)) {
-      await interaction.reply({
-        content: `**${name}** is already in the library.`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const game = addGame(ctx.db, guildId, name, min, max, interaction.user.id);
-    await interaction.reply({
-      content: `Added **${game.name}** (${game.minPlayers}–${game.maxPlayers ?? "∞"} players).`,
-    });
+    await interaction.showModal(buildGameAddModal());
     return;
   }
 
@@ -94,10 +51,18 @@ export async function execute(
       });
       return;
     }
-    const lines = games.map(
-      (g) => `• **${g.name}** — ${g.minPlayers}–${g.maxPlayers ?? "∞"} players`,
-    );
-    await interaction.reply({ content: lines.join("\n") });
+    const lines = games.map((g) => {
+      const base = `• **${g.name}** — ${g.minPlayers}–${g.maxPlayers ?? "∞"} players`;
+      return g.link ? `${base} — ${g.link}` : base;
+    });
+    // Suppressed so a library full of linked games doesn't unfurl into a
+    // wall of preview cards — one per line is plenty to read, no previews
+    // needed. /games add's own confirmation is a single game and keeps its
+    // preview, which is a nice confirmation that the link is the right one.
+    await interaction.reply({
+      content: lines.join("\n"),
+      flags: MessageFlags.SuppressEmbeds,
+    });
     return;
   }
 

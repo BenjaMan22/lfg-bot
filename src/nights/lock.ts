@@ -9,7 +9,7 @@ import {
   type NightRow,
 } from "../db/repos/nights.js";
 import { buildPollView, renderNightNow } from "../discord/updateQueue.js";
-import { createScheduledEvent } from "../discord/events.js";
+import { createScheduledEvent, deleteScheduledEvent } from "../discord/events.js";
 
 const SWEEP_MS = 30_000;
 const DRAFT_TTL_SECONDS = 3600;
@@ -58,7 +58,34 @@ async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promi
   }
 
   const eventId = await createScheduledEvent(client, night, winner);
-  lockNight(db, night.id, winner.startUtc, winner.endUtc, winner.game.id, eventId);
+  const locked = lockNight(
+    db,
+    night.id,
+    winner.startUtc,
+    winner.endUtc,
+    winner.game.id,
+    eventId,
+  );
+
+  if (!locked) {
+    // The night stopped being open while we were talking to Discord — in
+    // practice a /gamenight cancel between buildPollView and here. The
+    // canceller has already been told it is off, so the decision is void:
+    // do not seed a roster, do not ping anyone. Retract the Scheduled Event
+    // we just created, since cancel read event_id while it was still null
+    // and cannot have deleted it.
+    console.error("Night stopped being open mid-lock; discarding the decision", {
+      nightId: night.id,
+    });
+    if (eventId) await deleteScheduledEvent(client, night.guildId, eventId);
+    await renderNightNow(client, db, night.id).catch((error) =>
+      console.error("Could not re-render a night that was cancelled mid-lock", {
+        nightId: night.id,
+        error,
+      }),
+    );
+    return;
+  }
 
   // Everything below is post-commit: the night is locked in the database now.
   // A failure here is a delivery problem (roster seeding, the render, the

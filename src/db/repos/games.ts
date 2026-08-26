@@ -7,6 +7,7 @@ interface GameRow {
   name: string;
   min_players: number;
   max_players: number | null;
+  link: string | null;
 }
 
 const toGame = (row: GameRow): Game => ({
@@ -14,9 +15,10 @@ const toGame = (row: GameRow): Game => ({
   name: row.name,
   minPlayers: row.min_players,
   maxPlayers: row.max_players,
+  link: row.link,
 });
 
-const SELECT = "SELECT id, name, min_players, max_players FROM games";
+const SELECT = "SELECT id, name, min_players, max_players, link FROM games";
 
 export function addGame(
   db: DatabaseSync,
@@ -25,19 +27,21 @@ export function addGame(
   minPlayers: number,
   maxPlayers: number | null,
   createdBy: string,
+  link: string | null = null,
 ): Game {
   const trimmed = name.trim();
   const result = db
     .prepare(
-      `INSERT INTO games (guild_id, name, min_players, max_players, created_by)
-       VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO games (guild_id, name, min_players, max_players, created_by, link)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(guildId, trimmed, minPlayers, maxPlayers, createdBy);
+    .run(guildId, trimmed, minPlayers, maxPlayers, createdBy, link);
   return {
     id: Number(result.lastInsertRowid),
     name: trimmed,
     minPlayers,
     maxPlayers,
+    link,
   };
 }
 
@@ -79,8 +83,17 @@ export type RemoveGameResult = "removed" | "not_found" | "forbidden" | "in_use";
  * That means a game that has ever been in a poll raises SQLITE_CONSTRAINT_
  * FOREIGNKEY on delete; callers should not see that as a generic failure.
  */
+/** SQLITE_CONSTRAINT_FOREIGNKEY, the extended result code node:sqlite exposes as `errcode`. */
+const SQLITE_CONSTRAINT_FOREIGNKEY = 787;
+
 function isForeignKeyConstraintError(error: unknown): boolean {
-  return error instanceof Error && error.message.includes("FOREIGN KEY constraint failed");
+  // The numeric code rather than the message text: `errcode` is SQLite's own
+  // stable extended result code, whereas the message is driver prose that can
+  // be reworded between Node releases without warning.
+  return (
+    error instanceof Error &&
+    (error as { errcode?: number }).errcode === SQLITE_CONSTRAINT_FOREIGNKEY
+  );
 }
 
 export function removeGame(

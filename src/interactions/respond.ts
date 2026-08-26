@@ -11,7 +11,7 @@ import {
 } from "discord.js";
 import type { AppContext } from "../context.js";
 import { addGame, findGameByName, getGamesByIds, listGames } from "../db/repos/games.js";
-import { buildGameSetupComponents } from "./setup.js";
+import { buildGameSetupComponents, librarySelectNote } from "./setup.js";
 import {
   clearUserResponses,
   getAvailability,
@@ -21,22 +21,38 @@ import {
   getVotes,
   setAttendance,
   setAvailabilityForDay,
-  setNightGames,
+  addNightGame,
   setVotes,
 } from "../db/repos/nights.js";
 import {
   formatDayLabel,
-  formatHourLabel,
+  hourLabels,
   hoursIn,
 } from "../domain/timeblocks.js";
+import { GameLinkError, parseGameLink } from "../domain/gameLink.js";
 import { queueRender } from "../discord/updateQueue.js";
 import { requireTimezone } from "../discord/timezonePicker.js";
+import { performCancel } from "../nights/cancel.js";
 
 const EXPIRED = "That poll is closed. Nothing to change.";
+
+/** Discord's dropdown limit, and so the most games one night can carry. */
+const NIGHT_GAME_LIMIT = 25;
 
 function openNightOrNull(ctx: AppContext, nightId: number) {
   const night = getNight(ctx.db, nightId);
   return night && night.status === "open" ? night : null;
+}
+
+/**
+ * A night that still accepts attendance changes. Deliberately wider than
+ * `openNightOrNull`: the **I'm in** / **I'm out** buttons live on the locked
+ * message too, so those handlers cannot use the open-only guard — but they
+ * must not accept writes to a night that was cancelled or failed either.
+ */
+function liveNightOrNull(ctx: AppContext, nightId: number) {
+  const night = getNight(ctx.db, nightId);
+  return night && (night.status === "open" || night.status === "locked") ? night : null;
 }
 
 export async function handleAvailabilityButton(
@@ -55,6 +71,10 @@ export async function handleAvailabilityButton(
   const chosen = getAvailability(ctx.db, nightId).get(interaction.user.id) ?? new Set();
   const rows = getNightDays(ctx.db, nightId).map((day) => {
     const hours = hoursIn(day);
+    // hourLabels, not formatHourLabel per hour: on a DST fall-back night two
+    // real hours read the same on the clock, and two identical options are
+    // not a choice the player can actually make.
+    const labels = hourLabels(hours, tz);
     return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`gn:day:${nightId}:${day.dayIndex}`)
@@ -62,8 +82,8 @@ export async function handleAvailabilityButton(
         .setMinValues(0)
         .setMaxValues(hours.length)
         .addOptions(
-          hours.map((hour) => ({
-            label: formatHourLabel(hour, tz),
+          hours.map((hour, index) => ({
+            label: labels[index],
             value: String(hour),
             default: chosen.has(hour),
           })),
@@ -186,6 +206,14 @@ export async function handleSuggestButton(
             .setStyle(TextInputStyle.Short)
             .setRequired(false),
         ),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId("link")
+            .setLabel("Link (optional)")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder("https://store.steampowered.com/...")
+            .setRequired(false),
+        ),
       ),
   );
 }
@@ -204,6 +232,7 @@ export async function handleSuggestModal(
   const name = interaction.fields.getTextInputValue("name").trim();
   const minText = interaction.fields.getTextInputValue("min").trim();
   const maxText = interaction.fields.getTextInputValue("max").trim();
+  const linkText = interaction.fields.getTextInputValue("link");
   const min = Number(minText);
   const max = maxText === "" ? null : Number(maxText);
 
@@ -221,23 +250,36 @@ export async function handleSuggestModal(
     });
     return;
   }
-
-  // Reuse an existing library entry rather than creating a near-duplicate.
-  const game =
-    findGameByName(ctx.db, night.guildId, name) ??
-    addGame(ctx.db, night.guildId, name, min, max, interaction.user.id);
-
-  const gameIds = getNightGameIds(ctx.db, nightId);
-  if (!gameIds.includes(game.id)) {
-    if (gameIds.length >= 25) {
-      await interaction.reply({
-        content: "This night already has 25 games, which is Discord's dropdown limit.",
-        flags: MessageFlags.Ephemeral,
-      });
+  let link: string | null;
+  try {
+    link = parseGameLink(linkText);
+  } catch (error) {
+    if (error instanceof GameLinkError) {
+      await interaction.reply({ content: error.message, flags: MessageFlags.Ephemeral });
       return;
     }
-    setNightGames(ctx.db, nightId, [...gameIds, game.id]);
+    throw error;
   }
+
+  // Reuse an existing library entry rather than creating a near-duplicate.
+  const existing = findGameByName(ctx.db, night.guildId, name);
+  const gameIds = getNightGameIds(ctx.db, nightId);
+  const alreadyOnNight = existing !== null && gameIds.includes(existing.id);
+
+  // Checked before the game is created, not after: the library write is
+  // permanent, so rejecting here once it had already happened left an orphan
+  // entry behind for a suggestion that never made it onto any night.
+  if (!alreadyOnNight && gameIds.length >= NIGHT_GAME_LIMIT) {
+    await interaction.reply({
+      content: `This night already has ${NIGHT_GAME_LIMIT} games, which is Discord's dropdown limit.`,
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  const game =
+    existing ?? addGame(ctx.db, night.guildId, name, min, max, interaction.user.id, link);
+  if (!alreadyOnNight) addNightGame(ctx.db, nightId, game.id);
 
   const votes = getVotes(ctx.db, nightId).get(interaction.user.id) ?? new Set<number>();
   setVotes(ctx.db, nightId, interaction.user.id, [...new Set([...votes, game.id])]);
@@ -254,8 +296,8 @@ export async function handleSuggestModal(
     const library = listGames(ctx.db, night.guildId);
     const chosenIds = getNightGameIds(ctx.db, nightId);
     await interaction.update({
-      content: `${confirmation}\n\nPick the games for this night, then post it.`,
-      components: buildGameSetupComponents(nightId, library, chosenIds),
+      content: `${confirmation}\n\nPick the games for this night, then post it.${librarySelectNote(library.length)}`,
+      components: buildGameSetupComponents(nightId, library, chosenIds, night.voiceChannelId),
     });
     return;
   }
@@ -269,7 +311,16 @@ export async function handleOutButton(
   ctx: AppContext,
   nightId: number,
 ): Promise<void> {
-  clearUserResponses(ctx.db, nightId, interaction.user.id);
+  const night = liveNightOrNull(ctx, nightId);
+  if (!night) {
+    await interaction.reply({ content: EXPIRED, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  // Only while the poll is still open does dropping out mean withdrawing the
+  // answers too. After lock those rows are the record of how the decision was
+  // reached, and deleting them would rewrite that history — the roster is
+  // what changes, so change only the roster.
+  if (night.status === "open") clearUserResponses(ctx.db, nightId, interaction.user.id);
   setAttendance(ctx.db, nightId, interaction.user.id, "out");
   await interaction.reply({
     content: "Marked you out for this one.",
@@ -283,10 +334,32 @@ export async function handleInButton(
   ctx: AppContext,
   nightId: number,
 ): Promise<void> {
+  if (!liveNightOrNull(ctx, nightId)) {
+    await interaction.reply({ content: EXPIRED, flags: MessageFlags.Ephemeral });
+    return;
+  }
   setAttendance(ctx.db, nightId, interaction.user.id, "in");
   await interaction.reply({
     content: "You're on the roster.",
     flags: MessageFlags.Ephemeral,
   });
   queueRender(interaction.client, ctx.db, nightId);
+}
+
+/**
+ * Unlike `/gamenight cancel`, which has to look up "the channel's live
+ * night" because the command carries no argument, this button already knows
+ * exactly which night it's for — it's the ID baked into its own customId.
+ */
+export async function handleTrashButton(
+  interaction: ButtonInteraction,
+  ctx: AppContext,
+  nightId: number,
+): Promise<void> {
+  const night = getNight(ctx.db, nightId);
+  if (!night || (night.status !== "open" && night.status !== "locked")) {
+    await interaction.reply({ content: EXPIRED, flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await performCancel(interaction, ctx, night);
 }

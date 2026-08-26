@@ -200,6 +200,10 @@ export function renderPoll(view: PollView): {
             .setCustomId(`gn:out:${view.nightId}`)
             .setLabel("I'm out")
             .setStyle(ButtonStyle.Secondary),
+          new ButtonBuilder()
+            .setCustomId(`gn:trash:${view.nightId}`)
+            .setEmoji("🗑️")
+            .setStyle(ButtonStyle.Danger),
         ),
       ],
     };
@@ -263,6 +267,10 @@ export function renderPoll(view: PollView): {
           .setCustomId(`gn:out:${view.nightId}`)
           .setLabel("I'm out")
           .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId(`gn:trash:${view.nightId}`)
+          .setEmoji("🗑️")
+          .setStyle(ButtonStyle.Danger),
       ),
     ],
   };

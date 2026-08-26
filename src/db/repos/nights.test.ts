@@ -3,6 +3,8 @@ import type { DatabaseSync } from "node:sqlite";
 import { openDatabase } from "../index.js";
 import { addGame } from "./games.js";
 import {
+  addNightGame,
+  cancelNight,
   clearUserResponses,
   createDraftNight,
   dueNights,
@@ -21,6 +23,7 @@ import {
   setAttendance,
   setAvailabilityForDay,
   setNightGames,
+  setVoiceChannel,
   setVotes,
 } from "./nights.js";
 
@@ -76,6 +79,26 @@ describe("nights repository", () => {
     expect(night?.messageId).toBe("m1");
   });
 
+  it("sets the voice channel on a draft night", () => {
+    const id = makeDraft();
+    setVoiceChannel(db, id, "voice-1");
+    expect(getNight(db, id)?.voiceChannelId).toBe("voice-1");
+  });
+
+  it("clears the voice channel back to null", () => {
+    const id = makeDraft();
+    setVoiceChannel(db, id, "voice-1");
+    setVoiceChannel(db, id, null);
+    expect(getNight(db, id)?.voiceChannelId).toBeNull();
+  });
+
+  it("does not touch a night that is no longer a draft", () => {
+    const id = makeDraft();
+    publishNight(db, id, "m1");
+    setVoiceChannel(db, id, "voice-1");
+    expect(getNight(db, id)?.voiceChannelId).toBeNull();
+  });
+
   it("refuses to publish the same draft twice", () => {
     const id = makeDraft();
     expect(publishNight(db, id, "m1")).toBe(true);
@@ -108,6 +131,63 @@ describe("nights repository", () => {
     setNightGames(db, id, [a.id, b.id]);
     setNightGames(db, id, [b.id]);
     expect(getNightGameIds(db, id)).toEqual([b.id]);
+  });
+
+  it("does not replace the game set of a night that is already open", () => {
+    // Regression: the ephemeral setup message stays clickable for ~15
+    // minutes after Post it. A late touch of its games dropdown used to
+    // rewrite a live poll's games — dropping ones people had already voted
+    // for, whose votes then silently stopped counting.
+    const id = makeDraft();
+    const a = addGame(db, "g1", "A", 1, null, "u1");
+    setNightGames(db, id, [a.id]);
+    publishNight(db, id, "m1");
+    expect(setNightGames(db, id, [])).toBe(false);
+    expect(getNightGameIds(db, id)).toEqual([a.id]);
+  });
+
+  it("reports whether the replacement applied", () => {
+    const id = makeDraft();
+    const a = addGame(db, "g1", "A", 1, null, "u1");
+    expect(setNightGames(db, id, [a.id])).toBe(true);
+  });
+
+  it("appends a suggested game to a night that is already open", () => {
+    // "Suggest a game" adds to a live poll, so appending must stay allowed
+    // even though wholesale replacement is now draft-only.
+    const id = makeDraft();
+    const a = addGame(db, "g1", "A", 1, null, "u1");
+    const b = addGame(db, "g1", "B", 1, null, "u1");
+    setNightGames(db, id, [a.id]);
+    publishNight(db, id, "m1");
+    expect(addNightGame(db, id, b.id)).toBe(true);
+    expect(getNightGameIds(db, id)).toEqual([a.id, b.id]);
+  });
+
+  it("appends a suggested game to a draft", () => {
+    const id = makeDraft();
+    const a = addGame(db, "g1", "A", 1, null, "u1");
+    expect(addNightGame(db, id, a.id)).toBe(true);
+    expect(getNightGameIds(db, id)).toEqual([a.id]);
+  });
+
+  it("ignores a game the night already carries", () => {
+    const id = makeDraft();
+    const a = addGame(db, "g1", "A", 1, null, "u1");
+    addNightGame(db, id, a.id);
+    expect(addNightGame(db, id, a.id)).toBe(false);
+    expect(getNightGameIds(db, id)).toEqual([a.id]);
+  });
+
+  it("does not append to a night that is no longer taking responses", () => {
+    const id = makeDraft();
+    const a = addGame(db, "g1", "A", 1, null, "u1");
+    setNightGames(db, id, [a.id]);
+    publishNight(db, id, "m1");
+    const b = addGame(db, "g1", "B", 1, null, "u1");
+    cancelNight(db, id);
+    expect(addNightGame(db, id, b.id)).toBe(false);
+    expect(getNightGameIds(db, id)).toEqual([a.id]);
   });
 
   it("records availability for one day without touching another", () => {
@@ -200,6 +280,28 @@ describe("nights repository", () => {
     failNight(db, id, "lock_error");
     expect(getNight(db, id)?.status).toBe("locked");
     expect(getNight(db, id)?.failureReason).toBeNull();
+  });
+
+  it("never locks a night that was cancelled while the sweep was working", () => {
+    // Regression: lockOne does two Discord round trips (the poll view, then
+    // the Scheduled Event) between reading a due night and committing the
+    // lock. A /gamenight cancel landing in that window used to be overwritten
+    // — the canceller got "Cancelled." and the channel got a roster ping.
+    const id = makeDraft();
+    publishNight(db, id, "m1");
+    const game = addGame(db, "g1", "A", 1, null, "u1");
+    cancelNight(db, id);
+    const locked = lockNight(db, id, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1");
+    expect(locked).toBe(false);
+    expect(getNight(db, id)?.status).toBe("cancelled");
+    expect(getNight(db, id)?.eventId).toBeNull();
+  });
+
+  it("reports a successful lock so the caller knows it may announce", () => {
+    const id = makeDraft();
+    publishNight(db, id, "m1");
+    const game = addGame(db, "g1", "A", 1, null, "u1");
+    expect(lockNight(db, id, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1")).toBe(true);
   });
 
   it("deletes stale drafts and nothing else", () => {

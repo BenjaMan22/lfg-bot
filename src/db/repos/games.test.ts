@@ -34,8 +34,28 @@ function makeNight(): number {
 describe("games repository", () => {
   it("adds and reads back a game", () => {
     const game = addGame(db, "g1", "Deep Rock", 2, 4, "u1");
-    expect(game).toEqual({ id: game.id, name: "Deep Rock", minPlayers: 2, maxPlayers: 4 });
+    expect(game).toEqual({
+      id: game.id,
+      name: "Deep Rock",
+      minPlayers: 2,
+      maxPlayers: 4,
+      link: null,
+    });
     expect(listGames(db, "g1")).toEqual([game]);
+  });
+
+  it("stores an optional link", () => {
+    const game = addGame(
+      db,
+      "g1",
+      "Deep Rock",
+      2,
+      4,
+      "u1",
+      "https://store.steampowered.com/app/548430",
+    );
+    expect(game.link).toBe("https://store.steampowered.com/app/548430");
+    expect(listGames(db, "g1")[0].link).toBe("https://store.steampowered.com/app/548430");
   });
 
   it("stores an unlimited maximum as null", () => {

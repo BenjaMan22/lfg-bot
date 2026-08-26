@@ -2,9 +2,12 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ChannelSelectMenuBuilder,
+  ChannelType,
   MessageFlags,
   StringSelectMenuBuilder,
   type ButtonInteraction,
+  type ChannelSelectMenuInteraction,
   type StringSelectMenuInteraction,
 } from "discord.js";
 import type { AppContext } from "../context.js";
@@ -15,12 +18,13 @@ import {
   getOpenNightForChannel,
   publishNight,
   setNightGames,
+  setVoiceChannel,
 } from "../db/repos/nights.js";
 import { buildPollView } from "../discord/updateQueue.js";
 import { renderPoll } from "../discord/render.js";
 
 /** A jump link to a poll, or a plain description when we never stored one. */
-function messageLink(
+export function messageLink(
   guildId: string,
   channelId: string,
   messageId: string | null,
@@ -30,28 +34,60 @@ function messageLink(
     : "(its message is missing)";
 }
 
+/** Discord's hard limit on the number of options in one select menu. */
+const SELECT_OPTION_LIMIT = 25;
+
 /**
- * The setup select and its buttons. Built fresh from the current library and
- * the night's current picks — rather than once at `/gamenight create` time —
- * so a game added later via **Add a game** shows up (and is pre-selected)
- * the next time this message is rendered, instead of being silently dropped
- * the next time the host adjusts their picks.
+ * A note for the setup message when the library outgrows the select. The
+ * options are capped at 25 and `listGames` orders by name, so past that it is
+ * the alphabetical tail that silently becomes unofferable — which looks like
+ * the bot losing games rather than a Discord limit. "Suggest a game" still
+ * reaches them by name, since it reuses an existing library entry.
+ */
+export function librarySelectNote(libraryLength: number): string {
+  const hidden = libraryLength - SELECT_OPTION_LIMIT;
+  if (hidden <= 0) return "";
+  return `\n\n_Showing the first ${SELECT_OPTION_LIMIT} games alphabetically; ${hidden} more are in the library. Use **Add a game** and type the name to put one of those on this night._`;
+}
+
+/**
+ * The setup select, an optional voice-channel picker, and the action
+ * buttons. Built fresh from the current library and the night's current
+ * picks — rather than once at `/gamenight create` time — so a game added
+ * later via **Add a game** shows up (and is pre-selected) the next time this
+ * message is rendered, instead of being silently dropped the next time the
+ * host adjusts their picks. The voice select works the same way: it always
+ * reflects whatever is currently stored, not just what was true when the
+ * screen first appeared.
  */
 export function buildGameSetupComponents(
   nightId: number,
   library: Game[],
   chosenIds: number[],
-): [ActionRowBuilder<StringSelectMenuBuilder>, ActionRowBuilder<ButtonBuilder>] {
+  currentVoiceChannelId: string | null,
+): [
+  ActionRowBuilder<StringSelectMenuBuilder>,
+  ActionRowBuilder<ChannelSelectMenuBuilder>,
+  ActionRowBuilder<ButtonBuilder>,
+] {
   const chosen = new Set(chosenIds);
+  const voiceSelect = new ChannelSelectMenuBuilder()
+    .setCustomId(`gn:setupvoice:${nightId}`)
+    .setPlaceholder("Voice channel (optional)")
+    .setMinValues(0)
+    .setMaxValues(1)
+    .addChannelTypes(ChannelType.GuildVoice);
+  if (currentVoiceChannelId) voiceSelect.setDefaultChannels(currentVoiceChannelId);
+
   return [
     new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`gn:setup:${nightId}`)
         .setPlaceholder("Games")
         .setMinValues(0)
-        .setMaxValues(Math.min(library.length, 25))
+        .setMaxValues(Math.min(library.length, SELECT_OPTION_LIMIT))
         .addOptions(
-          library.slice(0, 25).map((g) => ({
+          library.slice(0, SELECT_OPTION_LIMIT).map((g) => ({
             label: g.name.slice(0, 100),
             description: `${g.minPlayers}–${g.maxPlayers ?? "∞"} players`,
             value: String(g.id),
@@ -59,6 +95,7 @@ export function buildGameSetupComponents(
           })),
         ),
     ),
+    new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(voiceSelect),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
         .setCustomId(`gn:setupadd:${nightId}`)
@@ -77,7 +114,26 @@ export async function handleSetupSelect(
   ctx: AppContext,
   nightId: number,
 ): Promise<void> {
-  setNightGames(ctx.db, nightId, interaction.values.map(Number));
+  // setNightGames only applies to a draft. This message stays clickable for
+  // ~15 minutes after Post it, so a late pick is not an error — it just has
+  // nowhere to go, and saying so beats a deferUpdate that looks like a save.
+  if (setNightGames(ctx.db, nightId, interaction.values.map(Number))) {
+    await interaction.deferUpdate();
+    return;
+  }
+  await interaction.update({
+    content:
+      "This night has already been posted, so its game list is fixed. Use **Suggest a game** on the poll itself to add one.",
+    components: [],
+  });
+}
+
+export async function handleSetupVoiceSelect(
+  interaction: ChannelSelectMenuInteraction,
+  ctx: AppContext,
+  nightId: number,
+): Promise<void> {
+  setVoiceChannel(ctx.db, nightId, interaction.values[0] ?? null);
   await interaction.deferUpdate();
 }
 

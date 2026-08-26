@@ -6,7 +6,7 @@ import {
   handleTimezoneOtherButton,
   handleTimezoneSelect,
 } from "../discord/timezonePicker.js";
-import { handlePostButton, handleSetupSelect } from "./setup.js";
+import { handlePostButton, handleSetupSelect, handleSetupVoiceSelect } from "./setup.js";
 import {
   handleAvailabilityButton,
   handleDaySelect,
@@ -14,9 +14,12 @@ import {
   handleOutButton,
   handleSuggestButton,
   handleSuggestModal,
+  handleTrashButton,
   handleVotesButton,
   handleVotesSelect,
 } from "./respond.js";
+import { handleGameAddModal } from "./games.js";
+import { handleGameNightCreateModal } from "./gamenightCreate.js";
 
 export function parseCustomId(id: string): { action: string; args: string[] } {
   const [namespace, action, ...args] = id.split(":");
@@ -61,6 +64,10 @@ export async function routeInteraction(
       }
       if (action === "voteselect") return await handleVotesSelect(interaction, ctx, Number(args[0]));
     }
+    if (interaction.isChannelSelectMenu()) {
+      const { action, args } = parseCustomId(interaction.customId);
+      if (action === "setupvoice") return await handleSetupVoiceSelect(interaction, ctx, Number(args[0]));
+    }
     if (interaction.isButton()) {
       const { action, args } = parseCustomId(interaction.customId);
       if (action === "tzother") return await handleTimezoneOtherButton(interaction);
@@ -71,11 +78,14 @@ export async function routeInteraction(
       if (action === "suggest") return await handleSuggestButton(interaction, Number(args[0]));
       if (action === "out") return await handleOutButton(interaction, ctx, Number(args[0]));
       if (action === "in") return await handleInButton(interaction, ctx, Number(args[0]));
+      if (action === "trash") return await handleTrashButton(interaction, ctx, Number(args[0]));
     }
     if (interaction.isModalSubmit()) {
       const { action, args } = parseCustomId(interaction.customId);
       if (action === "tzmodal") return await handleTimezoneModal(interaction, ctx);
       if (action === "suggestmodal") return await handleSuggestModal(interaction, ctx, Number(args[0]));
+      if (action === "gameaddmodal") return await handleGameAddModal(interaction, ctx);
+      if (action === "createmodal") return await handleGameNightCreateModal(interaction, ctx);
     }
   } catch (error) {
     // interaction.id correlates to nothing a human can act on. The night id

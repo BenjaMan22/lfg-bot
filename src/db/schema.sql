@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS games (
   min_players  INTEGER NOT NULL CHECK (min_players >= 1),
   max_players  INTEGER,
   created_by   TEXT NOT NULL,
+  link         TEXT,
   CHECK (max_players IS NULL OR max_players >= min_players)
 );
 

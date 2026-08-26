@@ -2,13 +2,16 @@ import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import {
   TimeParseError,
+  assertSessionFitsWindow,
   expandDays,
   formatDayLabel,
   formatHourLabel,
+  hourLabels,
   hoursIn,
   parseDays,
   parseDeadline,
   parseWindow,
+  windowHours,
 } from "./timeblocks.js";
 
 const CHI = "America/Chicago";
@@ -183,5 +186,60 @@ describe("formatting", () => {
   it("labels a day", () => {
     const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 23 }, CHI);
     expect(formatDayLabel(day, CHI)).toBe("Fri Aug 28");
+  });
+});
+
+describe("windowHours", () => {
+  it("measures an evening window", () => {
+    expect(windowHours({ startHour: 18, endHour: 22 })).toBe(4);
+  });
+
+  it("measures a window that crosses midnight", () => {
+    expect(windowHours({ startHour: 18, endHour: 1 })).toBe(7);
+  });
+});
+
+describe("assertSessionFitsWindow", () => {
+  it("accepts a session the window can hold", () => {
+    expect(() => assertSessionFitsWindow(4, { startHour: 18, endHour: 1 })).not.toThrow();
+  });
+
+  it("accepts a session exactly as long as the window", () => {
+    expect(() => assertSessionFitsWindow(4, { startHour: 18, endHour: 22 })).not.toThrow();
+  });
+
+  it("rejects a session longer than the window it must fit in", () => {
+    // Regression: `minhours` was only range-checked (1-12) in isolation, never
+    // against the window. A 4-hour window with minhours 12 was accepted, and
+    // rankNight's run loop then never executed — so the poll ran its full
+    // course and reported "No viable night" with no near misses to explain it.
+    expect(() => assertSessionFitsWindow(12, { startHour: 18, endHour: 22 })).toThrow(
+      TimeParseError,
+    );
+  });
+
+  it("explains both numbers so the host can fix it", () => {
+    expect(() => assertSessionFitsWindow(12, { startHour: 18, endHour: 22 })).toThrow(
+      /12.*4|4.*12/,
+    );
+  });
+});
+
+describe("hourLabels", () => {
+  it("labels ordinary hours exactly as formatHourLabel does", () => {
+    const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 21 }, CHI);
+    expect(hourLabels(hoursIn(day), CHI)).toEqual(["6p", "7p", "8p"]);
+  });
+
+  it("distinguishes the repeated hour on a DST fall-back night", () => {
+    // 2026-11-01 in America/Chicago: 2am CDT rewinds to 1am CST, so the
+    // window contains two distinct instants that both read "1a". In an
+    // availability dropdown that is unpickable — the two options are
+    // indistinguishable, and one of them is an hour the player did not mean.
+    // Midnight CDT through 3am CST; endUtc is exclusive, so 2a is the last hour.
+    const day = { dayIndex: 0, startUtc: 1793509200, endUtc: 1793523600 };
+    const labels = hourLabels(hoursIn(day), CHI);
+    expect(new Set(labels).size).toBe(labels.length);
+    expect(labels).toEqual(["12a", "1a", "1a (again)", "2a"]);
   });
 });
