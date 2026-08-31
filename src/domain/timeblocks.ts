@@ -75,7 +75,7 @@ export function assertSessionFitsWindow(
   const available = windowHours(window);
   if (minSessionHours > available) {
     throw new TimeParseError(
-      `A shortest session of ${minSessionHours} hours cannot fit in a ${available}-hour window — no night could ever qualify. Shorten the session, or widen the window.`,
+      `A game night needs ${minSessionHours} hours in a row to be worth scheduling, and this window is only ${available}. Widen it — something like \`6pm-1am\`.`,
     );
   }
 }

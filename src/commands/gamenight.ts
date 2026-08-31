@@ -5,6 +5,7 @@ import {
 } from "discord.js";
 import type { AppContext } from "../context.js";
 import { getCancellableNightForChannel, getOpenNightForChannel } from "../db/repos/nights.js";
+import { listGames } from "../db/repos/games.js";
 import { requireTimezone } from "../discord/timezonePicker.js";
 import { buildGameNightCreateModal } from "../interactions/gamenightCreate.js";
 import { messageLink } from "../interactions/setup.js";
@@ -70,5 +71,18 @@ export async function execute(
   const tz = await requireTimezone(interaction, ctx);
   if (!tz) return;
 
-  await interaction.showModal(buildGameNightCreateModal());
+  // Checked before the modal, not inside its handler: the modal now carries
+  // the game picker, and Discord rejects a select menu with zero options —
+  // so an empty library has to be caught while there is still a reply to
+  // make, rather than throwing when the modal is built.
+  const library = listGames(ctx.db, interaction.guildId);
+  if (library.length === 0) {
+    await interaction.reply({
+      content: "The game library is empty. Add a few with `/games add` first.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
+  await interaction.showModal(buildGameNightCreateModal(library));
 }
