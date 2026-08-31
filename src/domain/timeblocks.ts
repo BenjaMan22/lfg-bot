@@ -2,10 +2,20 @@ import { DateTime } from "luxon";
 
 export class TimeParseError extends Error {}
 
-export interface HourWindow {
-  startHour: number;
-  endHour: number;
+/**
+ * An evening window, as minutes from local midnight. Minutes rather than
+ * hours because availability moves in half hours; `endMinutes` at or before
+ * `startMinutes` means the window crosses into the next day.
+ */
+export interface DayWindow {
+  startMinutes: number;
+  endMinutes: number;
 }
+
+/** How long one availability slot is. Everything downstream derives from this. */
+export const SLOT_SECONDS = 1800;
+const SLOT_MINUTES = 30;
+const MINUTES_PER_DAY = 24 * 60;
 
 export interface NightDay {
   dayIndex: number;
@@ -16,12 +26,14 @@ export interface NightDay {
 export const MAX_DAYS = 5;
 /**
  * Longest evening window a night may cover. Not an arbitrary tidiness rule:
- * every hour becomes a column in the poll's availability grid and an option
- * in a per-day dropdown, and `12am-11pm` across five days pushes the grid
- * past the 1024-character limit on an embed field — which discord.js rejects
- * by throwing, so the poll would never post at all.
+ * every slot becomes an option in that day's availability dropdown, and a
+ * Discord select menu holds 25 options. At half-hour granularity that is 24
+ * slots for a 12-hour window — the longest that can still be answered. It
+ * also keeps the availability grid inside the 1024-character limit on an
+ * embed field, which discord.js enforces by throwing, so an oversized poll
+ * would never post at all.
  */
-export const MAX_WINDOW_HOURS = 16;
+export const MAX_WINDOW_HOURS = 12;
 
 const TIME = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i;
 
@@ -61,34 +73,37 @@ function parseClockTime(raw: string, unreadable: string): ClockTime {
 }
 
 /**
- * A clock time that must land exactly on the hour.
+ * A window boundary, as minutes from midnight, snapped to a slot.
  *
- * Only windows need this: availability is stored as one row per whole hour,
- * so half past six is not a boundary the grid can represent. Deadlines are
- * plain instants and deliberately do NOT go through here — sharing this
- * restriction with them is what used to force a host a full hour clear of
- * their own start time.
+ * Only windows need this restriction: availability is one row per half-hour
+ * slot, so 6:20 is not a boundary the grid can represent. Deadlines are plain
+ * instants and deliberately do NOT go through here — sharing a granularity
+ * rule with them is what used to force a host clear of their own start time.
  */
-function parseClockHour(raw: string, whole: string): number {
+function parseSlotMinutes(raw: string, whole: string): number {
   const { hour, minute } = parseClockTime(
     raw,
     `I could not read "${whole}" as a time window. Try something like \`6pm-1am\` or \`18-01\`.`,
   );
-  if (minute !== 0) {
+  if (minute % SLOT_MINUTES !== 0) {
     throw new TimeParseError(
-      `Availability is tracked in whole hours, so "${raw.trim()}" will not work. Use \`6pm\`, not \`6:30pm\`.`,
+      `Availability moves in half hours, so "${raw.trim()}" will not work. Use \`6pm\` or \`6:30pm\`.`,
     );
   }
-  return hour;
+  return hour * 60 + minute;
 }
 
-/**
- * How many whole hours a window covers. An end hour at or before the start
- * means it crosses midnight into the following day.
- */
-export function windowHours(window: HourWindow): number {
-  const { startHour, endHour } = window;
-  return endHour > startHour ? endHour - startHour : 24 - startHour + endHour;
+/** Minutes a window covers, wrapping past midnight when it needs to. */
+function windowMinutes(window: DayWindow): number {
+  const { startMinutes, endMinutes } = window;
+  return endMinutes > startMinutes
+    ? endMinutes - startMinutes
+    : MINUTES_PER_DAY - startMinutes + endMinutes;
+}
+
+/** How many half-hour availability slots a window covers. */
+export function windowSlots(window: DayWindow): number {
+  return windowMinutes(window) / SLOT_MINUTES;
 }
 
 /**
@@ -101,9 +116,9 @@ export function windowHours(window: HourWindow): number {
  */
 export function assertSessionFitsWindow(
   minSessionHours: number,
-  window: HourWindow,
+  window: DayWindow,
 ): void {
-  const available = windowHours(window);
+  const available = windowMinutes(window) / 60;
   if (minSessionHours > available) {
     throw new TimeParseError(
       `A game night needs ${minSessionHours} hours in a row to be worth scheduling, and this window is only ${available}. Widen it — something like \`6pm-1am\`.`,
@@ -111,25 +126,25 @@ export function assertSessionFitsWindow(
   }
 }
 
-export function parseWindow(input: string): HourWindow {
+export function parseWindow(input: string): DayWindow {
   const parts = input.split("-");
   if (parts.length !== 2) {
     throw new TimeParseError(
       `I could not read "${input}" as a time window. Try something like \`6pm-1am\`.`,
     );
   }
-  const startHour = parseClockHour(parts[0], input);
-  const endHour = parseClockHour(parts[1], input);
-  if (startHour === endHour) {
-    throw new TimeParseError("A game night window needs to be at least one hour long.");
+  const startMinutes = parseSlotMinutes(parts[0], input);
+  const endMinutes = parseSlotMinutes(parts[1], input);
+  if (startMinutes === endMinutes) {
+    throw new TimeParseError("A game night window needs to be at least half an hour long.");
   }
-  const length = windowHours({ startHour, endHour });
-  if (length > MAX_WINDOW_HOURS) {
+  const hours = windowMinutes({ startMinutes, endMinutes }) / 60;
+  if (hours > MAX_WINDOW_HOURS) {
     throw new TimeParseError(
-      `A window can be at most ${MAX_WINDOW_HOURS} hours long, and "${input}" is ${length}. Narrow it to the hours people might actually play, like \`6pm-1am\`.`,
+      `A window can be at most ${MAX_WINDOW_HOURS} hours long, and "${input}" is ${hours}. Narrow it to the hours people might actually play, like \`6pm-1am\`.`,
     );
   }
-  return { startHour, endHour };
+  return { startMinutes, endMinutes };
 }
 
 const WEEKDAYS: Record<string, number> = {
@@ -191,24 +206,26 @@ export function parseDays(input: string, tz: string, now: DateTime): string[] {
 
 export function expandDays(
   isoDates: string[],
-  window: HourWindow,
+  window: DayWindow,
   tz: string,
 ): NightDay[] {
+  const at = (base: DateTime, minutes: number) =>
+    base.set({ hour: Math.floor(minutes / 60), minute: minutes % 60 });
+
   return isoDates.map((iso, dayIndex) => {
     const base = DateTime.fromISO(iso, { zone: tz }).startOf("day");
-    const start = base.set({ hour: window.startHour });
-    const crossesMidnight = window.endHour <= window.startHour;
-    const end = (crossesMidnight ? base.plus({ days: 1 }) : base).set({
-      hour: window.endHour,
-    });
+    const start = at(base, window.startMinutes);
+    const crossesMidnight = window.endMinutes <= window.startMinutes;
+    const end = at(crossesMidnight ? base.plus({ days: 1 }) : base, window.endMinutes);
     return { dayIndex, startUtc: start.toUnixInteger(), endUtc: end.toUnixInteger() };
   });
 }
 
-export function hoursIn(day: NightDay): number[] {
-  const hours: number[] = [];
-  for (let t = day.startUtc; t < day.endUtc; t += 3600) hours.push(t);
-  return hours;
+/** Every half-hour slot the day offers, as epoch seconds at the slot start. */
+export function slotsIn(day: NightDay): number[] {
+  const slots: number[] = [];
+  for (let t = day.startUtc; t < day.endUtc; t += SLOT_SECONDS) slots.push(t);
+  return slots;
 }
 
 export function parseDeadline(input: string, tz: string, now: DateTime): number {
@@ -259,10 +276,19 @@ export function parseDeadline(input: string, tz: string, now: DateTime): number 
   return result.toUnixInteger();
 }
 
-export function formatHourLabel(utcHour: number, tz: string): string {
-  const local = DateTime.fromSeconds(utcHour, { zone: tz });
+/** `6p`, or `6:30p` for a slot that does not land on the hour. */
+export function formatSlotLabel(utcSlot: number, tz: string): string {
+  const local = DateTime.fromSeconds(utcSlot, { zone: tz });
   const hour12 = local.hour % 12 === 0 ? 12 : local.hour % 12;
-  return `${hour12}${local.hour < 12 ? "a" : "p"}`;
+  const meridiem = local.hour < 12 ? "a" : "p";
+  return local.minute === 0
+    ? `${hour12}${meridiem}`
+    : `${hour12}:${String(local.minute).padStart(2, "0")}${meridiem}`;
+}
+
+/** True when a slot begins exactly on the hour. Used to thin out grid labels. */
+export function isOnTheHour(utcSlot: number, tz: string): boolean {
+  return DateTime.fromSeconds(utcSlot, { zone: tz }).minute === 0;
 }
 
 export function formatDayLabel(day: NightDay, tz: string): string {
@@ -270,19 +296,19 @@ export function formatDayLabel(day: NightDay, tz: string): string {
 }
 
 /**
- * Hour labels for a set of instants, guaranteed distinct.
+ * Slot labels for a set of instants, guaranteed distinct.
  *
  * On a DST fall-back night the clock repeats an hour, so two different
- * instants format identically — "1a" and "1a". `hoursIn` correctly yields
- * both, because both are real playable hours, but a dropdown offering two
+ * instants format identically — "1a" and "1a". `slotsIn` correctly yields
+ * both, because both are real playable slots, but a dropdown offering two
  * identical options is unusable: whichever the player picks, they have a 50%
  * chance of claiming an hour they did not mean. Marking the repeat keeps the
  * options tellable apart, in the order they actually happen.
  */
-export function hourLabels(hours: number[], tz: string): string[] {
+export function slotLabels(slots: number[], tz: string): string[] {
   const seen = new Map<string, number>();
-  return hours.map((hour) => {
-    const label = formatHourLabel(hour, tz);
+  return slots.map((slot) => {
+    const label = formatSlotLabel(slot, tz);
     const previous = seen.get(label) ?? 0;
     seen.set(label, previous + 1);
     return previous === 0 ? label : `${label} (again)`;

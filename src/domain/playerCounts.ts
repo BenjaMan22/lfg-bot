@@ -3,12 +3,14 @@ export class PlayerCountError extends Error {}
 /**
  * What a game's minimum becomes when nobody supplies one.
  *
- * Deliberately 2, not 1. The minimum is the engine's quorum — a combination
- * is viable when the roster reaches it — so a default of 1 would let a night
- * lock in for a single person who happened to be free. 2 keeps a game night a
- * group activity while still asking nothing of a host who does not care.
+ * 1, deliberately. The minimum is the engine's quorum — a combination is
+ * viable once the roster reaches it — so this means one interested person is
+ * enough to put a night on the calendar. That is the intent: an evening
+ * should not fail to schedule just because nobody else has answered yet, and
+ * whoever set it up is usually happy to play regardless. A game that
+ * genuinely needs a group still says so by carrying its own minimum.
  */
-export const DEFAULT_MIN_PLAYERS = 2;
+export const DEFAULT_MIN_PLAYERS = 1;
 
 /**
  * Read the player counts off an add-a-game modal.

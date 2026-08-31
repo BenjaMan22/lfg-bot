@@ -39,7 +39,7 @@ export function buildGameAddModal(prefill: GameAddPrefill = {}): ModalBuilder {
           .setCustomId("min")
           .setLabel("Fewest players (optional)")
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder("Leave blank for 2")
+          .setPlaceholder("Leave blank for 1")
           .setRequired(false),
       ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(

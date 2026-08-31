@@ -7,8 +7,9 @@ import {
 import type { Game, SchedulingResult } from "../domain/scheduling.js";
 import {
   formatDayLabel,
-  formatHourLabel,
-  hoursIn,
+  formatSlotLabel,
+  isOnTheHour,
+  slotsIn,
   type NightDay,
 } from "../domain/timeblocks.js";
 
@@ -112,9 +113,9 @@ function fitField(value: string): string {
 }
 
 function countsFor(day: NightDay, availability: Map<string, Set<number>>): number[] {
-  return hoursIn(day).map((hour) => {
+  return slotsIn(day).map((slot) => {
     let count = 0;
-    for (const hours of availability.values()) if (hours.has(hour)) count += 1;
+    for (const slots of availability.values()) if (slots.has(slot)) count += 1;
     return count;
   });
 }
@@ -122,8 +123,14 @@ function countsFor(day: NightDay, availability: Map<string, Set<number>>): numbe
 function grid(view: PollView): string {
   const lines: string[] = [];
   for (const day of view.days) {
-    const hours = hoursIn(day);
-    const labels = hours.map((h) => formatHourLabel(h, view.displayTz));
+    const hours = slotsIn(day);
+    // A label on every half-hour column would roughly double the grid's width
+    // and push five days past the 1024-character embed field limit, which
+    // discord.js throws on. Labelling only the hour keeps a column per slot —
+    // the counts are what people read across — while the header stays legible.
+    const labels = hours.map((h) =>
+      isOnTheHour(h, view.displayTz) ? formatSlotLabel(h, view.displayTz) : "",
+    );
     const counts = countsFor(day, view.availability).map((c) => (c === 0 ? "·" : String(c)));
     const width = labels.map((label, i) => Math.max(label.length, counts[i].length));
     const pad = (cells: string[]) =>
@@ -160,10 +167,14 @@ function suggestionLines(view: PollView): string {
       .join("\n\n");
   }
   if (view.result.nearMisses.length > 0) {
+    // An open poll is reporting a live count that can still change; a failed
+    // one is explaining what happened. Same numbers, different tense — "had"
+    // on a running poll reads as a post-mortem on something still in play.
+    const verb = view.status === "open" ? "has" : "had";
     return view.result.nearMisses
       .map(
         (m) =>
-          `${dayAndClock(m.startUtc)}–${clock(m.endUtc)} · **${m.game.name}** had ${m.rosterSize}; needs ${m.game.minPlayers}.`,
+          `${dayAndClock(m.startUtc)}–${clock(m.endUtc)} · **${m.game.name}** ${verb} ${m.rosterSize}; needs ${m.game.minPlayers}.`,
       )
       .join("\n");
   }
