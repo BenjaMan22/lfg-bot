@@ -90,11 +90,11 @@ export function buildGameNightCreateModal(library: Game[]): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("Hours")
-        .setDescription("The evening window each of those days.")
+        .setDescription("The evening window each day, in half hours. 12 hours max.")
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId("hours")
-            .setPlaceholder("6pm-1am")
+            .setPlaceholder("6pm-1am or 6:30pm-11pm")
             .setStyle(TextInputStyle.Short)
             .setMaxLength(40)
             .setRequired(true),

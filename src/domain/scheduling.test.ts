@@ -10,6 +10,15 @@ const day = (dayIndex: number, hourCount: number): NightDay => ({
   endUtc: dayIndex * 100 * H + hourCount * H,
 });
 const at = (d: NightDay, offset: number) => d.startUtc + offset * H;
+const SLOT = 1800;
+/**
+ * Availability is stored per half-hour slot, but these fixtures are far
+ * easier to read in hours — so an hour offset expands into the two slots it
+ * actually contains. Run lengths and end times come out identical to the
+ * hourly fixtures this replaced: hours 0-2 still end at `at(d, 3)`.
+ */
+const slotsForHours = (d: NightDay, hourOffsets: number[]): number[] =>
+  hourOffsets.flatMap((o) => [at(d, o), at(d, o) + SLOT]);
 
 const deepRock: Game = { id: 1, name: "Deep Rock", minPlayers: 4, maxPlayers: 4 };
 const lethal: Game = { id: 2, name: "Lethal Company", minPlayers: 2, maxPlayers: 4 };
@@ -34,7 +43,7 @@ function everyone(
   gameIds: number[],
 ): Pick<SchedulingInput, "availability" | "votes"> {
   return {
-    availability: new Map(users.map((u) => [u, new Set(offsets.map((o) => at(d, o)))])),
+    availability: new Map(users.map((u) => [u, new Set(slotsForHours(d, offsets))])),
     votes: new Map(users.map((u) => [u, new Set(gameIds)])),
   };
 }
@@ -77,9 +86,9 @@ describe("rankNight", () => {
     const result = rankNight(
       input({
         availability: new Map([
-          ["a", new Set([at(d, 0), at(d, 1), at(d, 2)])],
-          ["b", new Set([at(d, 0), at(d, 1), at(d, 2)])],
-          ["c", new Set([at(d, 0)])],
+          ["a", new Set(slotsForHours(d, [0, 1, 2]))],
+          ["b", new Set(slotsForHours(d, [0, 1, 2]))],
+          ["c", new Set(slotsForHours(d, [0]))],
         ]),
         votes: new Map([
           ["a", new Set([2])],
@@ -96,9 +105,9 @@ describe("rankNight", () => {
     const result = rankNight(
       input({
         availability: new Map([
-          ["a", new Set([at(d, 0), at(d, 1)])],
-          ["b", new Set([at(d, 0), at(d, 1)])],
-          ["c", new Set([at(d, 0), at(d, 1)])],
+          ["a", new Set(slotsForHours(d, [0, 1]))],
+          ["b", new Set(slotsForHours(d, [0, 1]))],
+          ["c", new Set(slotsForHours(d, [0, 1]))],
         ]),
         votes: new Map([
           ["a", new Set([2])],
@@ -141,8 +150,8 @@ describe("rankNight", () => {
       input({
         games: [lethal, solo],
         availability: new Map([
-          ["a", new Set([at(d, 0), at(d, 1), at(d, 2), at(d, 3)])],
-          ["b", new Set([at(d, 2), at(d, 3)])],
+          ["a", new Set(slotsForHours(d, [0, 1, 2, 3]))],
+          ["b", new Set(slotsForHours(d, [2, 3]))],
         ]),
         votes: new Map([
           ["a", new Set([2, 3])],
@@ -165,8 +174,8 @@ describe("rankNight", () => {
       input({
         // Free 0-2 and 4-6, so two equal two-hour runs exist.
         availability: new Map([
-          ["a", new Set([at(d, 0), at(d, 1), at(d, 4), at(d, 5)])],
-          ["b", new Set([at(d, 0), at(d, 1), at(d, 4), at(d, 5)])],
+          ["a", new Set(slotsForHours(d, [0, 1, 4, 5]))],
+          ["b", new Set(slotsForHours(d, [0, 1, 4, 5]))],
         ]),
         votes: new Map([
           ["a", new Set([2])],
@@ -190,7 +199,7 @@ describe("rankNight", () => {
     for (const user of ["a", "b"]) {
       availability.set(
         user,
-        new Set(days.flatMap((d) => [at(d, 0), at(d, 1), at(d, 2)])),
+        new Set(days.flatMap((d) => slotsForHours(d, [0, 1, 2]))),
       );
       votes.set(user, new Set([2, 3]));
     }
@@ -214,7 +223,7 @@ describe("rankNight", () => {
     for (const user of ["a", "b"]) {
       availability.set(
         user,
-        new Set(days.flatMap((d) => [at(d, 0), at(d, 1), at(d, 2)])),
+        new Set(days.flatMap((d) => slotsForHours(d, [0, 1, 2]))),
       );
       votes.set(user, new Set([2, 3]));
     }
@@ -242,9 +251,9 @@ describe("rankNight", () => {
     const result = rankNight(
       input({
         availability: new Map([
-          ["chicago", new Set([at(d, 0), at(d, 1)])],
-          ["newyork", new Set([at(d, 0), at(d, 1)])],
-          ["london", new Set([at(d, 4), at(d, 5)])],
+          ["chicago", new Set(slotsForHours(d, [0, 1]))],
+          ["newyork", new Set(slotsForHours(d, [0, 1]))],
+          ["london", new Set(slotsForHours(d, [4, 5]))],
         ]),
         votes: new Map([
           ["chicago", new Set([2])],
@@ -261,8 +270,8 @@ describe("rankNight", () => {
     const result = rankNight(
       input({
         availability: new Map([
-          ["a", new Set([at(d, 0), at(d, 1), 999_999 * H])],
-          ["b", new Set([at(d, 0), at(d, 1)])],
+          ["a", new Set([...slotsForHours(d, [0, 1]), 999_999 * H])],
+          ["b", new Set(slotsForHours(d, [0, 1]))],
         ]),
         votes: new Map([
           ["a", new Set([2])],
@@ -281,8 +290,8 @@ describe("rankNight", () => {
       days: [day(0, 2)],
       games: [niche, popular],
       availability: new Map([
-        ["a", new Set([at(d, 0), at(d, 1)])],
-        ["b", new Set([at(d, 0), at(d, 1)])],
+        ["a", new Set(slotsForHours(d, [0, 1]))],
+        ["b", new Set(slotsForHours(d, [0, 1]))],
         ["c", new Set()],
       ]),
       votes: new Map([

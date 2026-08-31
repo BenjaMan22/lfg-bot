@@ -1,17 +1,18 @@
 import { DateTime } from "luxon";
 import { describe, expect, it } from "vitest";
 import {
+  MAX_WINDOW_HOURS,
   TimeParseError,
   assertSessionFitsWindow,
   expandDays,
   formatDayLabel,
-  formatHourLabel,
-  hourLabels,
-  hoursIn,
+  formatSlotLabel,
   parseDays,
   parseDeadline,
   parseWindow,
-  windowHours,
+  slotLabels,
+  slotsIn,
+  windowSlots,
 } from "./timeblocks.js";
 
 const CHI = "America/Chicago";
@@ -20,28 +21,28 @@ const NOW = DateTime.fromISO("2026-08-25T12:00:00", { zone: CHI });
 
 describe("parseWindow", () => {
   it("parses 12-hour with meridiems", () => {
-    expect(parseWindow("6pm-1am")).toEqual({ startHour: 18, endHour: 1 });
+    expect(parseWindow("6pm-1am")).toEqual({ startMinutes: 18 * 60, endMinutes: 1 * 60 });
   });
 
   it("parses 24-hour", () => {
-    expect(parseWindow("18-01")).toEqual({ startHour: 18, endHour: 1 });
+    expect(parseWindow("18-01")).toEqual({ startMinutes: 18 * 60, endMinutes: 1 * 60 });
   });
 
   it("accepts explicit zero minutes", () => {
-    expect(parseWindow("6:00pm-11:00pm")).toEqual({ startHour: 18, endHour: 23 });
+    expect(parseWindow("6:00pm-11:00pm")).toEqual({ startMinutes: 18 * 60, endMinutes: 23 * 60 });
   });
 
   it("treats 12am as midnight and 12pm as noon", () => {
-    expect(parseWindow("12pm-12am")).toEqual({ startHour: 12, endHour: 0 });
+    expect(parseWindow("12pm-12am")).toEqual({ startMinutes: 12 * 60, endMinutes: 0 * 60 });
   });
 
   it("rejects non-zero minutes with an explanation", () => {
-    expect(() => parseWindow("6:30pm-11pm")).toThrow(TimeParseError);
-    expect(() => parseWindow("6:30pm-11pm")).toThrow(/whole hours/i);
+    expect(() => parseWindow("6:20pm-11pm")).toThrow(TimeParseError);
+    expect(() => parseWindow("6:20pm-11pm")).toThrow(/half hours/i);
   });
 
   it("rejects a window of zero length", () => {
-    expect(() => parseWindow("8pm-8pm")).toThrow(/at least one hour/i);
+    expect(() => parseWindow("8pm-8pm")).toThrow(/at least half an hour/i);
   });
 
   it("rejects gibberish", () => {
@@ -52,15 +53,15 @@ describe("parseWindow", () => {
     // 23 hours across 5 days would push the availability grid past the
     // 1024-character embed field limit, which throws rather than truncates.
     expect(() => parseWindow("12am-11pm")).toThrow(TimeParseError);
-    expect(() => parseWindow("12am-11pm")).toThrow(/at most 16 hours/i);
+    expect(() => parseWindow("12am-11pm")).toThrow(/at most 12 hours/i);
   });
 
   it("rejects an over-long window that crosses midnight", () => {
-    expect(() => parseWindow("6pm-11am")).toThrow(/at most 16 hours/i);
+    expect(() => parseWindow("6pm-11am")).toThrow(/at most 12 hours/i);
   });
 
   it("accepts a window exactly at the maximum", () => {
-    expect(parseWindow("6am-10pm")).toEqual({ startHour: 6, endHour: 22 });
+    expect(parseWindow("6am-6pm")).toEqual({ startMinutes: 6 * 60, endMinutes: 18 * 60 });
   });
 });
 
@@ -99,24 +100,24 @@ describe("parseDays", () => {
 
 describe("expandDays", () => {
   it("expands an evening window into UTC instants", () => {
-    const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 23 }, CHI);
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 23 * 60 }, CHI);
     expect(DateTime.fromSeconds(day.startUtc, { zone: CHI }).hour).toBe(18);
     expect(DateTime.fromSeconds(day.endUtc, { zone: CHI }).hour).toBe(23);
-    expect(hoursIn(day)).toHaveLength(5);
+    expect(slotsIn(day)).toHaveLength(10);
   });
 
   it("carries a window that crosses midnight into the next day", () => {
-    const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 1 }, CHI);
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 1 * 60 }, CHI);
     const end = DateTime.fromSeconds(day.endUtc, { zone: CHI });
     expect(end.day).toBe(29);
     expect(end.hour).toBe(1);
-    expect(hoursIn(day)).toHaveLength(7);
+    expect(slotsIn(day)).toHaveLength(14);
   });
 
   it("numbers days from zero in order", () => {
     const days = expandDays(
       ["2026-08-28", "2026-08-29"],
-      { startHour: 18, endHour: 22 },
+      { startMinutes: 18 * 60, endMinutes: 22 * 60 },
       CHI,
     );
     expect(days.map((d) => d.dayIndex)).toEqual([0, 1]);
@@ -124,16 +125,16 @@ describe("expandDays", () => {
 
   it("produces one fewer hour across a spring-forward transition", () => {
     // US DST begins 2027-03-14; 2am local does not exist.
-    const [day] = expandDays(["2027-03-13"], { startHour: 22, endHour: 5 }, CHI);
+    const [day] = expandDays(["2027-03-13"], { startMinutes: 22 * 60, endMinutes: 5 * 60 }, CHI);
     // 10pm to 5am is 7 wall-clock hours but only 6 real ones that night.
-    expect(hoursIn(day)).toHaveLength(6);
+    expect(slotsIn(day)).toHaveLength(12);
   });
 
-  it("emits hours exactly one hour apart, aligned to the hour", () => {
-    const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 23 }, CHI);
-    const hours = hoursIn(day);
-    expect(hours.every((h) => h % 3600 === 0)).toBe(true);
-    expect(hours[1] - hours[0]).toBe(3600);
+  it("emits slots exactly half an hour apart, aligned to the half hour", () => {
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 23 * 60 }, CHI);
+    const slots = slotsIn(day);
+    expect(slots.every((s) => s % 1800 === 0)).toBe(true);
+    expect(slots[1] - slots[0]).toBe(1800);
   });
 });
 
@@ -167,45 +168,45 @@ describe("parseDeadline", () => {
 
 describe("formatting", () => {
   it("labels hours compactly in the target zone", () => {
-    const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 23 }, CHI);
-    expect(formatHourLabel(hoursIn(day)[0], CHI)).toBe("6p");
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 23 * 60 }, CHI);
+    expect(formatSlotLabel(slotsIn(day)[0], CHI)).toBe("6p");
   });
 
   it("labels midnight and noon unambiguously", () => {
-    const [day] = expandDays(["2026-08-28"], { startHour: 12, endHour: 14 }, CHI);
-    const hours = hoursIn(day);
-    expect(formatHourLabel(hours[0], CHI)).toBe("12p");
-    expect(formatHourLabel(hours[0] + 12 * 3600, CHI)).toBe("12a");
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 12 * 60, endMinutes: 14 * 60 }, CHI);
+    const hours = slotsIn(day);
+    expect(formatSlotLabel(hours[0], CHI)).toBe("12p");
+    expect(formatSlotLabel(hours[0] + 12 * 3600, CHI)).toBe("12a");
   });
 
   it("renders the same instant differently per viewer zone", () => {
-    const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 23 }, CHI);
-    expect(formatHourLabel(hoursIn(day)[0], "America/New_York")).toBe("7p");
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 23 * 60 }, CHI);
+    expect(formatSlotLabel(slotsIn(day)[0], "America/New_York")).toBe("7p");
   });
 
   it("labels a day", () => {
-    const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 23 }, CHI);
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 23 * 60 }, CHI);
     expect(formatDayLabel(day, CHI)).toBe("Fri Aug 28");
   });
 });
 
-describe("windowHours", () => {
+describe("windowSlots", () => {
   it("measures an evening window", () => {
-    expect(windowHours({ startHour: 18, endHour: 22 })).toBe(4);
+    expect(windowSlots({ startMinutes: 18 * 60, endMinutes: 22 * 60 })).toBe(8);
   });
 
   it("measures a window that crosses midnight", () => {
-    expect(windowHours({ startHour: 18, endHour: 1 })).toBe(7);
+    expect(windowSlots({ startMinutes: 18 * 60, endMinutes: 1 * 60 })).toBe(14);
   });
 });
 
 describe("assertSessionFitsWindow", () => {
   it("accepts a session the window can hold", () => {
-    expect(() => assertSessionFitsWindow(4, { startHour: 18, endHour: 1 })).not.toThrow();
+    expect(() => assertSessionFitsWindow(4, { startMinutes: 18 * 60, endMinutes: 1 * 60 })).not.toThrow();
   });
 
   it("accepts a session exactly as long as the window", () => {
-    expect(() => assertSessionFitsWindow(4, { startHour: 18, endHour: 22 })).not.toThrow();
+    expect(() => assertSessionFitsWindow(4, { startMinutes: 18 * 60, endMinutes: 22 * 60 })).not.toThrow();
   });
 
   it("rejects a session longer than the window it must fit in", () => {
@@ -213,22 +214,22 @@ describe("assertSessionFitsWindow", () => {
     // against the window. A 4-hour window with minhours 12 was accepted, and
     // rankNight's run loop then never executed — so the poll ran its full
     // course and reported "No viable night" with no near misses to explain it.
-    expect(() => assertSessionFitsWindow(12, { startHour: 18, endHour: 22 })).toThrow(
+    expect(() => assertSessionFitsWindow(12, { startMinutes: 18 * 60, endMinutes: 22 * 60 })).toThrow(
       TimeParseError,
     );
   });
 
   it("explains both numbers so the host can fix it", () => {
-    expect(() => assertSessionFitsWindow(12, { startHour: 18, endHour: 22 })).toThrow(
+    expect(() => assertSessionFitsWindow(12, { startMinutes: 18 * 60, endMinutes: 22 * 60 })).toThrow(
       /12.*4|4.*12/,
     );
   });
 });
 
-describe("hourLabels", () => {
-  it("labels ordinary hours exactly as formatHourLabel does", () => {
-    const [day] = expandDays(["2026-08-28"], { startHour: 18, endHour: 21 }, CHI);
-    expect(hourLabels(hoursIn(day), CHI)).toEqual(["6p", "7p", "8p"]);
+describe("slotLabels", () => {
+  it("labels ordinary slots exactly as formatSlotLabel does", () => {
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 20 * 60 }, CHI);
+    expect(slotLabels(slotsIn(day), CHI)).toEqual(["6p", "6:30p", "7p", "7:30p"]);
   });
 
   it("distinguishes the repeated hour on a DST fall-back night", () => {
@@ -238,9 +239,18 @@ describe("hourLabels", () => {
     // indistinguishable, and one of them is an hour the player did not mean.
     // Midnight CDT through 3am CST; endUtc is exclusive, so 2a is the last hour.
     const day = { dayIndex: 0, startUtc: 1793509200, endUtc: 1793523600 };
-    const labels = hourLabels(hoursIn(day), CHI);
+    const labels = slotLabels(slotsIn(day), CHI);
     expect(new Set(labels).size).toBe(labels.length);
-    expect(labels).toEqual(["12a", "1a", "1a (again)", "2a"]);
+    expect(labels).toEqual([
+      "12a",
+      "12:30a",
+      "1a",
+      "1:30a",
+      "1a (again)",
+      "1:30a (again)",
+      "2a",
+      "2:30a",
+    ]);
   });
 });
 
@@ -279,7 +289,7 @@ describe("parseDeadline minute precision", () => {
   });
 
   it("still rejects minutes in a window, where hours are load-bearing", () => {
-    expect(() => parseWindow("6:50pm-11pm")).toThrow(/whole hours/i);
+    expect(() => parseWindow("6:50pm-11pm")).toThrow(/half hours/i);
   });
 });
 
@@ -300,5 +310,59 @@ describe("relative deadlines in minutes", () => {
 
   it("still reads d as days", () => {
     expect(parseDeadline("2d", CHI, NOW)).toBe(NOW.plus({ days: 2 }).toUnixInteger());
+  });
+});
+
+describe("half-hour granularity", () => {
+  it("parses a window starting on the half hour", () => {
+    expect(parseWindow("6:30pm-11pm")).toEqual({ startMinutes: 18 * 60 + 30, endMinutes: 23 * 60 });
+  });
+
+  it("parses a window ending on the half hour", () => {
+    expect(parseWindow("6pm-11:30pm")).toEqual({ startMinutes: 18 * 60, endMinutes: 23 * 60 + 30 });
+  });
+
+  it("still rejects minutes that are not a half hour", () => {
+    expect(() => parseWindow("6:20pm-11pm")).toThrow(/half hours/i);
+  });
+
+  it("counts a window in half-hour slots", () => {
+    expect(windowSlots({ startMinutes: 18 * 60, endMinutes: 23 * 60 })).toBe(10);
+    expect(windowSlots({ startMinutes: 18 * 60 + 30, endMinutes: 23 * 60 })).toBe(9);
+  });
+
+  it("counts a slot window that crosses midnight", () => {
+    expect(windowSlots({ startMinutes: 18 * 60, endMinutes: 60 })).toBe(14);
+  });
+
+  it("expands a day into half-hour instants", () => {
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 20 * 60 }, CHI);
+    const slots = slotsIn(day);
+    expect(slots).toHaveLength(4);
+    expect(slots[1] - slots[0]).toBe(1800);
+  });
+
+  it("honours a half-hour start when expanding", () => {
+    const [day] = expandDays(
+      ["2026-08-28"],
+      { startMinutes: 18 * 60 + 30, endMinutes: 20 * 60 },
+      CHI,
+    );
+    expect(DateTime.fromSeconds(day.startUtc, { zone: CHI }).toFormat("H:mm")).toBe("18:30");
+    expect(slotsIn(day)).toHaveLength(3);
+  });
+
+  it("labels a half-hour slot distinguishably from the hour", () => {
+    const [day] = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 20 * 60 }, CHI);
+    const slots = slotsIn(day);
+    expect(formatSlotLabel(slots[0], CHI)).toBe("6p");
+    expect(formatSlotLabel(slots[1], CHI)).toBe("6:30p");
+  });
+
+  it("caps the window so a day's slots still fit one Discord select", () => {
+    // A select menu holds 25 options and availability is one option per slot,
+    // so the longest window that can be answered at all is 12 hours.
+    expect(MAX_WINDOW_HOURS * 2).toBeLessThanOrEqual(25);
+    expect(() => parseWindow("6am-11pm")).toThrow(/at most 12 hours/i);
   });
 });

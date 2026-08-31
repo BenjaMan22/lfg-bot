@@ -26,8 +26,8 @@ import {
 } from "../db/repos/nights.js";
 import {
   formatDayLabel,
-  hourLabels,
-  hoursIn,
+  slotLabels,
+  slotsIn,
 } from "../domain/timeblocks.js";
 import { GameLinkError, parseGameLink } from "../domain/gameLink.js";
 import { PlayerCountError, parsePlayerCounts } from "../domain/playerCounts.js";
@@ -37,7 +37,8 @@ import { performCancel } from "../nights/cancel.js";
 
 const EXPIRED = "That poll is closed. Nothing to change.";
 
-/** Discord's dropdown limit, and so the most games one night can carry. */
+/** Discord's select-menu limit: games on a night, and slots in a day. */
+const SELECT_OPTION_LIMIT = 25;
 const NIGHT_GAME_LIMIT = 25;
 
 function openNightOrNull(ctx: AppContext, nightId: number) {
@@ -69,31 +70,45 @@ export async function handleAvailabilityButton(
   const tz = await requireTimezone(interaction, ctx);
   if (!tz) return;
 
+  const days = getNightDays(ctx.db, nightId);
+  // A night created before availability moved to half hours may have a window
+  // longer than the current maximum, which at 30-minute granularity needs more
+  // options than a select menu can hold. discord.js throws on that, so say
+  // what is actually wrong instead of surfacing the router's generic error.
+  if (days.some((day) => slotsIn(day).length > SELECT_OPTION_LIMIT)) {
+    await interaction.reply({
+      content:
+        "This poll's window is too long to answer now that availability moves in half hours. Cancel it with `/gamenight cancel` and start a new one — a window of 12 hours or less.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+
   const chosen = getAvailability(ctx.db, nightId).get(interaction.user.id) ?? new Set();
-  const rows = getNightDays(ctx.db, nightId).map((day) => {
-    const hours = hoursIn(day);
-    // hourLabels, not formatHourLabel per hour: on a DST fall-back night two
-    // real hours read the same on the clock, and two identical options are
+  const rows = days.map((day) => {
+    const slots = slotsIn(day);
+    // slotLabels, not formatSlotLabel per slot: on a DST fall-back night two
+    // real slots read the same on the clock, and two identical options are
     // not a choice the player can actually make.
-    const labels = hourLabels(hours, tz);
+    const labels = slotLabels(slots, tz);
     return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`gn:day:${nightId}:${day.dayIndex}`)
         .setPlaceholder(formatDayLabel(day, tz))
         .setMinValues(0)
-        .setMaxValues(hours.length)
+        .setMaxValues(slots.length)
         .addOptions(
-          hours.map((hour, index) => ({
+          slots.map((slot, index) => ({
             label: labels[index],
-            value: String(hour),
-            default: chosen.has(hour),
+            value: String(slot),
+            default: chosen.has(slot),
           })),
         ),
     );
   });
 
   await interaction.reply({
-    content: `Pick the hours you are free, in **${tz}**. Each change saves as you make it — just dismiss this when you are done.`,
+    content: `Pick the half-hour blocks you are free, in **${tz}**. Each change saves as you make it — just dismiss this when you are done.`,
     flags: MessageFlags.Ephemeral,
     components: rows,
   });
@@ -117,7 +132,7 @@ export async function handleDaySelect(
     ctx.db,
     nightId,
     interaction.user.id,
-    hoursIn(day),
+    slotsIn(day),
     interaction.values.map(Number),
   );
   await interaction.deferUpdate();
@@ -197,7 +212,7 @@ export async function handleSuggestButton(
             .setCustomId("min")
             .setLabel("Fewest players (optional)")
             .setStyle(TextInputStyle.Short)
-            .setPlaceholder("Leave blank for 2")
+            .setPlaceholder("Leave blank for 1")
             .setRequired(false),
         ),
         new ActionRowBuilder<TextInputBuilder>().addComponents(

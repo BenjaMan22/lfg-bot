@@ -1,4 +1,4 @@
-import { hoursIn, type NightDay } from "./timeblocks.js";
+import { SLOT_SECONDS, slotsIn, type NightDay } from "./timeblocks.js";
 
 export interface Game {
   id: number;
@@ -53,7 +53,8 @@ export interface SchedulingResult {
 
 export const MAX_SUGGESTIONS = 3;
 
-const HOUR = 3600;
+/** Runs are measured in half-hour slots; minSessionHours converts into them. */
+const SLOTS_PER_HOUR = 3600 / SLOT_SECONDS;
 
 /** Users free for every hour of the run. Partial attendance does not count. */
 function freeForAll(
@@ -90,6 +91,10 @@ export function rankNight(input: SchedulingInput): SchedulingResult {
   const { days, minSessionHours, games, availability, votes } = input;
 
   if (minSessionHours < 1) return { top: [], nearMisses: [] };
+  // Availability is stored per half-hour slot, so a 2-hour minimum is a run
+  // of 4. The stored value stays in hours: that is the unit a host thinks in,
+  // and the conversion belongs here rather than in the database.
+  const minSessionSlots = minSessionHours * SLOTS_PER_HOUR;
 
   const voteCounts = new Map(games.map((g) => [g.id, totalVotes(g.id, votes)]));
   const voters = new Map(
@@ -105,15 +110,15 @@ export function rankNight(input: SchedulingInput): SchedulingResult {
   const misses: NearMiss[] = [];
 
   for (const day of days) {
-    const hours = hoursIn(day);
-    for (let start = 0; start < hours.length; start += 1) {
-      for (let end = start + minSessionHours; end <= hours.length; end += 1) {
-        const run = hours.slice(start, end);
+    const slots = slotsIn(day);
+    for (let start = 0; start < slots.length; start += 1) {
+      for (let end = start + minSessionSlots; end <= slots.length; end += 1) {
+        const run = slots.slice(start, end);
         const free = freeForAll(run, availability);
         if (free.length === 0) continue;
 
         const startUtc = run[0];
-        const endUtc = run[run.length - 1] + HOUR;
+        const endUtc = run[run.length - 1] + SLOT_SECONDS;
 
         for (const game of games) {
           const eligible = voters.get(game.id)!;

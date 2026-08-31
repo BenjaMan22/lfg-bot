@@ -11,7 +11,13 @@ import type { Game, SchedulingResult } from "../domain/scheduling.js";
 
 const CHI = "America/Chicago";
 const lethal: Game = { id: 2, name: "Lethal Company", minPlayers: 2, maxPlayers: 4 };
-const days = expandDays(["2026-08-28"], { startHour: 18, endHour: 23 }, CHI);
+const days = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 23 * 60 }, CHI);
+
+/**
+ * The four half-hour slots making up a two-hour block — enough to clear the
+ * two-hour minimum session these fixtures rely on.
+ */
+const twoHours = (start: number) => [start, start + 1800, start + 3600, start + 5400];
 
 interface BaseOverrides {
   availability?: Map<string, Set<number>>;
@@ -80,7 +86,7 @@ describe("renderPoll", () => {
   });
 
   it("lists suggestions with dynamic timestamps and the roster", () => {
-    const hours = [days[0].startUtc, days[0].startUtc + 3600];
+    const hours = twoHours(days[0].startUtc);
     const availability = new Map([
       ["a", new Set(hours)],
       ["b", new Set(hours)],
@@ -111,7 +117,7 @@ describe("renderPoll", () => {
   });
 
   it("dates a near miss so it names the evening it is talking about", () => {
-    const hours = [days[0].startUtc, days[0].startUtc + 3600];
+    const hours = twoHours(days[0].startUtc);
     const availability = new Map([["a", new Set(hours)]]);
     const votes = new Map([["a", new Set([2])]]);
     const result = rankNight({
@@ -128,7 +134,7 @@ describe("renderPoll", () => {
   });
 
   it("flags an oversubscribed roster", () => {
-    const hours = [days[0].startUtc, days[0].startUtc + 3600];
+    const hours = twoHours(days[0].startUtc);
     const users = ["a", "b", "c", "d", "e"];
     const availability = new Map(users.map((u) => [u, new Set(hours)]));
     const votes = new Map(users.map((u) => [u, new Set([2])]));
@@ -157,7 +163,7 @@ describe("renderPoll", () => {
   });
 
   it("caps a suggestion roster instead of overflowing the field", () => {
-    const hours = [days[0].startUtc, days[0].startUtc + 3600];
+    const hours = twoHours(days[0].startUtc);
     const users = Array.from({ length: 40 }, (_, i) => `98765432109876${1000 + i}`);
     const availability = new Map(users.map((u) => [u, new Set(hours)]));
     const votes = new Map(users.map((u) => [u, new Set([2])]));
@@ -195,7 +201,7 @@ describe("renderPoll", () => {
   });
 
   it("explains the near misses when nothing was viable", () => {
-    const hours = [days[0].startUtc, days[0].startUtc + 3600];
+    const hours = twoHours(days[0].startUtc);
     const availability = new Map([["a", new Set(hours)]]);
     const votes = new Map([["a", new Set([2])]]);
     const result = rankNight({
@@ -231,5 +237,33 @@ describe("renderPoll", () => {
 
   it("shows no buttons at all on a failed night", () => {
     expect(renderPoll(failedView()).components).toEqual([]);
+  });
+});
+
+describe("near-miss tense", () => {
+  /** One person free for the whole window, voting for a game that needs two. */
+  const availability = new Map([["u1", new Set(days.flatMap((d) => {
+    const out: number[] = [];
+    for (let t = d.startUtc; t < d.endUtc; t += 1800) out.push(t);
+    return out;
+  }))]]);
+  const votes = new Map([["u1", new Set([lethal.id])]]);
+
+  function nearMissText(view: PollView): string {
+    const embed = renderPoll(view).embeds[0].toJSON();
+    return (embed.fields ?? []).map((f) => f.value).join("\n");
+  }
+
+  it("speaks in the present tense while the poll is still open", () => {
+    // "had 1" reads like a post-mortem on a poll that is still running and
+    // can still change — the count is current, not historical.
+    const text = nearMissText(openView({ availability, votes }));
+    expect(text).toContain("has 1; needs 2");
+    expect(text).not.toContain("had 1");
+  });
+
+  it("speaks in the past tense once the night has failed", () => {
+    const text = nearMissText(failedView({ availability, votes }));
+    expect(text).toContain("had 1; needs 2");
   });
 });

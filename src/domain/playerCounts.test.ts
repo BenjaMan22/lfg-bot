@@ -14,11 +14,12 @@ describe("parsePlayerCounts", () => {
     expect(parsePlayerCounts("   ", "  ")).toEqual({ min: DEFAULT_MIN_PLAYERS, max: null });
   });
 
-  it("defaults to a number that still means 'more than one person'", () => {
-    // The engine's quorum is the game's minimum, so a default of 1 would let
-    // a night lock in for a single person. 2 is the floor that keeps a game
-    // night a group activity.
-    expect(DEFAULT_MIN_PLAYERS).toBe(2);
+  it("defaults to 1, so a solo session is still a night worth scheduling", () => {
+    // The minimum is the engine's quorum, so 1 means a single interested
+    // person is enough to schedule. That is deliberate: an evening worth
+    // putting on the calendar shouldn't be blocked because nobody else has
+    // answered yet. A game that genuinely needs a group still says so.
+    expect(DEFAULT_MIN_PLAYERS).toBe(1);
   });
 
   it("keeps a minimum the host did supply", () => {
@@ -47,7 +48,7 @@ describe("parsePlayerCounts", () => {
   });
 
   it("rejects a maximum below a defaulted minimum", () => {
-    expect(() => parsePlayerCounts("", "1")).toThrow(PlayerCountError);
+    expect(() => parsePlayerCounts("", "0")).toThrow(PlayerCountError);
   });
 
   it("explains the problem in terms the host can act on", () => {
