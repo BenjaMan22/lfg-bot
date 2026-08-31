@@ -101,11 +101,11 @@ export function buildGameNightCreateModal(library: Game[]): ModalBuilder {
         ),
       new LabelBuilder()
         .setLabel("Deadline")
-        .setDescription("When I decide and lock it in.")
+        .setDescription("When I decide and lock it in. Any minute before the first day starts.")
         .setTextInputComponent(
           new TextInputBuilder()
             .setCustomId("deadline")
-            .setPlaceholder("thu 9pm or 24h")
+            .setPlaceholder("fri 6:50pm, 90m, or 2026-08-28 18:50")
             .setStyle(TextInputStyle.Short)
             .setMaxLength(40)
             .setRequired(true),

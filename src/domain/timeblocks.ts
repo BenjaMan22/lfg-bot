@@ -25,18 +25,27 @@ export const MAX_WINDOW_HOURS = 16;
 
 const TIME = /^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i;
 
-function parseClockHour(raw: string, whole: string): number {
+export interface ClockTime {
+  hour: number;
+  minute: number;
+}
+
+/**
+ * A clock time to the minute, in 12- or 24-hour form.
+ *
+ * `unreadable` is the message used when the text is not a time at all, since
+ * the two callers are parsing quite different things — half of a window, or a
+ * deadline — and "I could not read this as a time window" is nonsense when
+ * the host was typing a deadline.
+ */
+function parseClockTime(raw: string, unreadable: string): ClockTime {
   const match = TIME.exec(raw.trim());
-  if (!match) {
-    throw new TimeParseError(
-      `I could not read "${whole}" as a time window. Try something like \`6pm-1am\` or \`18-01\`.`,
-    );
-  }
+  if (!match) throw new TimeParseError(unreadable);
+
   const [, hourText, minuteText, meridiem] = match;
-  if (minuteText && minuteText !== "00") {
-    throw new TimeParseError(
-      `Availability is tracked in whole hours, so "${raw.trim()}" will not work. Use \`6pm\`, not \`6:30pm\`.`,
-    );
+  const minute = minuteText ? Number(minuteText) : 0;
+  if (minute > 59) {
+    throw new TimeParseError(`"${raw.trim()}" is not a valid time.`);
   }
   let hour = Number(hourText);
   if (meridiem) {
@@ -48,7 +57,29 @@ function parseClockHour(raw: string, whole: string): number {
   } else if (hour < 0 || hour > 24) {
     throw new TimeParseError(`"${raw.trim()}" is not a valid hour.`);
   }
-  return hour % 24;
+  return { hour: hour % 24, minute };
+}
+
+/**
+ * A clock time that must land exactly on the hour.
+ *
+ * Only windows need this: availability is stored as one row per whole hour,
+ * so half past six is not a boundary the grid can represent. Deadlines are
+ * plain instants and deliberately do NOT go through here — sharing this
+ * restriction with them is what used to force a host a full hour clear of
+ * their own start time.
+ */
+function parseClockHour(raw: string, whole: string): number {
+  const { hour, minute } = parseClockTime(
+    raw,
+    `I could not read "${whole}" as a time window. Try something like \`6pm-1am\` or \`18-01\`.`,
+  );
+  if (minute !== 0) {
+    throw new TimeParseError(
+      `Availability is tracked in whole hours, so "${raw.trim()}" will not work. Use \`6pm\`, not \`6:30pm\`.`,
+    );
+  }
+  return hour;
 }
 
 /**
@@ -185,12 +216,16 @@ export function parseDeadline(input: string, tz: string, now: DateTime): number 
   const base = now.setZone(tz);
   let result: DateTime | null = null;
 
-  const relative = /^(\d+)\s*(h|hr|hrs|hour|hours|d|day|days)$/.exec(text);
+  const relative =
+    /^(\d+)\s*(m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days)$/.exec(text);
   if (relative) {
     const amount = Number(relative[1]);
-    result = relative[2].startsWith("h")
-      ? base.plus({ hours: amount })
-      : base.plus({ days: amount });
+    const unit = relative[2];
+    // Ordered longest-prefix first: "m" must not be mistaken for the "m" that
+    // starts "minutes" only after "h"/"d" have had their turn.
+    if (unit.startsWith("m")) result = base.plus({ minutes: amount });
+    else if (unit.startsWith("h")) result = base.plus({ hours: amount });
+    else result = base.plus({ days: amount });
   }
 
   if (!result) {
@@ -202,8 +237,12 @@ export function parseDeadline(input: string, tz: string, now: DateTime): number 
     const weekdayTime = /^([a-z]+)\s+(.+)$/.exec(text);
     if (weekdayTime && WEEKDAYS[weekdayTime[1]] !== undefined) {
       const iso = resolveDayToken(weekdayTime[1], tz, now);
-      const hour = parseClockHour(weekdayTime[2], input);
-      result = DateTime.fromISO(iso, { zone: tz }).set({ hour });
+      // To the minute: a deadline is an instant, not an availability slot.
+      const { hour, minute } = parseClockTime(
+        weekdayTime[2],
+        `I could not read "${input}" as a deadline. Try \`thu 9pm\`, \`24h\`, or \`2026-08-27 21:00\`.`,
+      );
+      result = DateTime.fromISO(iso, { zone: tz }).set({ hour, minute });
       // "thu 9pm" when it is already Thursday 10pm means next Thursday.
       if (result <= base) result = result.plus({ weeks: 1 });
     }

@@ -243,3 +243,62 @@ describe("hourLabels", () => {
     expect(labels).toEqual(["12a", "1a", "1a (again)", "2a"]);
   });
 });
+
+describe("parseDeadline minute precision", () => {
+  it("accepts a weekday time with minutes", () => {
+    // Regression: parseClockHour is shared with parseWindow, which rejects
+    // non-zero minutes because availability is stored per hour. A deadline is
+    // just an instant and has no such constraint — but it inherited the
+    // restriction, which forced hosts a full hour clear of their start time.
+    const expected = DateTime.fromISO("2026-08-27T18:50:00", { zone: CHI });
+    expect(parseDeadline("thu 6:50pm", CHI, NOW)).toBe(expected.toUnixInteger());
+  });
+
+  it("accepts a 24-hour weekday time with minutes", () => {
+    const expected = DateTime.fromISO("2026-08-27T21:45:00", { zone: CHI });
+    expect(parseDeadline("thu 21:45", CHI, NOW)).toBe(expected.toUnixInteger());
+  });
+
+  it("still accepts a whole-hour weekday time", () => {
+    const expected = DateTime.fromISO("2026-08-27T21:00:00", { zone: CHI });
+    expect(parseDeadline("thu 9pm", CHI, NOW)).toBe(expected.toUnixInteger());
+  });
+
+  it("accepts minutes in an absolute date and time", () => {
+    const expected = DateTime.fromISO("2026-08-27T21:30:00", { zone: CHI });
+    expect(parseDeadline("2026-08-27 21:30", CHI, NOW)).toBe(expected.toUnixInteger());
+  });
+
+  it("rolls to next week using the full time, not just the hour", () => {
+    // 12:30pm on the NOW Tuesday is already past (NOW is 12:00 plus nothing),
+    // so "tue 11:30am" must land a week out rather than earlier today.
+    const result = parseDeadline("tue 11:30am", CHI, NOW);
+    expect(result).toBe(
+      DateTime.fromISO("2026-09-01T11:30:00", { zone: CHI }).toUnixInteger(),
+    );
+  });
+
+  it("still rejects minutes in a window, where hours are load-bearing", () => {
+    expect(() => parseWindow("6:50pm-11pm")).toThrow(/whole hours/i);
+  });
+});
+
+describe("relative deadlines in minutes", () => {
+  it("accepts a relative duration in minutes", () => {
+    expect(parseDeadline("90m", CHI, NOW)).toBe(NOW.plus({ minutes: 90 }).toUnixInteger());
+  });
+
+  it("accepts the spelled-out form", () => {
+    expect(parseDeadline("45 minutes", CHI, NOW)).toBe(
+      NOW.plus({ minutes: 45 }).toUnixInteger(),
+    );
+  });
+
+  it("still reads h as hours, not minutes", () => {
+    expect(parseDeadline("2h", CHI, NOW)).toBe(NOW.plus({ hours: 2 }).toUnixInteger());
+  });
+
+  it("still reads d as days", () => {
+    expect(parseDeadline("2d", CHI, NOW)).toBe(NOW.plus({ days: 2 }).toUnixInteger());
+  });
+});
