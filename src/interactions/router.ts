@@ -55,6 +55,24 @@ export async function routeInteraction(
       await command.execute(interaction, ctx);
       return;
     }
+    if (interaction.isAutocomplete()) {
+      // Autocomplete has no user-visible failure mode: it cannot reply with a
+      // message, and an unanswered one just shows "loading" forever. So it
+      // never reaches the catch below — a command without an autocomplete
+      // handler, or one that throws, answers with an empty list instead.
+      const command = commandsByName.get(interaction.commandName);
+      try {
+        if (command?.autocomplete) await command.autocomplete(interaction);
+        else await interaction.respond([]);
+      } catch (error) {
+        console.error("Autocomplete failed", {
+          command: interaction.commandName,
+          error,
+        });
+        await interaction.respond([]).catch(() => {});
+      }
+      return;
+    }
     if (interaction.isStringSelectMenu()) {
       const { action, args } = parseCustomId(interaction.customId);
       if (action === "tz") return await handleTimezoneSelect(interaction, ctx);

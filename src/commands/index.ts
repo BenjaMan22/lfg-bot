@@ -1,4 +1,4 @@
-import type { ChatInputCommandInteraction } from "discord.js";
+import type { AutocompleteInteraction, ChatInputCommandInteraction } from "discord.js";
 import type { AppContext } from "../context.js";
 import * as gamenight from "./gamenight.js";
 import * as games from "./games.js";
@@ -7,6 +7,8 @@ import * as timezone from "./timezone.js";
 export interface SlashCommand {
   data: { name: string; toJSON(): unknown };
   execute(i: ChatInputCommandInteraction, ctx: AppContext): Promise<void>;
+  /** Only for commands with an autocompleting option; see `/games add`. */
+  autocomplete?(i: AutocompleteInteraction): Promise<void>;
 }
 
 export const commands: SlashCommand[] = [gamenight, games, timezone];

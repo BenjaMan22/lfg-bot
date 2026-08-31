@@ -10,19 +10,29 @@ import type { AppContext } from "../context.js";
 import { addGame, findGameByName } from "../db/repos/games.js";
 import { GameLinkError, parseGameLink } from "../domain/gameLink.js";
 
-export function buildGameAddModal(): ModalBuilder {
+/** Values carried over from a Steam autocomplete pick, if there was one. */
+export interface GameAddPrefill {
+  name?: string;
+  link?: string;
+}
+
+export function buildGameAddModal(prefill: GameAddPrefill = {}): ModalBuilder {
+  const name = new TextInputBuilder()
+    .setCustomId("name")
+    .setLabel("Game name")
+    .setStyle(TextInputStyle.Short)
+    .setMaxLength(80)
+    .setRequired(true);
+  // Prefilled, not fixed: a Steam title is a starting point the host can edit,
+  // and min players — the field ranking actually depends on — is still asked
+  // for every time, because Steam does not publish it.
+  if (prefill.name) name.setValue(prefill.name.slice(0, 80));
+
   return new ModalBuilder()
     .setCustomId("gn:gameaddmodal")
     .setTitle("Add a game")
     .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("name")
-          .setLabel("Game name")
-          .setStyle(TextInputStyle.Short)
-          .setMaxLength(80)
-          .setRequired(true),
-      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(name),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("min")
@@ -39,12 +49,16 @@ export function buildGameAddModal(): ModalBuilder {
           .setRequired(false),
       ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("link")
-          .setLabel("Link (optional)")
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder("https://store.steampowered.com/...")
-          .setRequired(false),
+        (() => {
+          const link = new TextInputBuilder()
+            .setCustomId("link")
+            .setLabel("Link (optional)")
+            .setStyle(TextInputStyle.Short)
+            .setPlaceholder("https://store.steampowered.com/...")
+            .setRequired(false);
+          if (prefill.link) link.setValue(prefill.link);
+          return link;
+        })(),
       ),
     );
 }
