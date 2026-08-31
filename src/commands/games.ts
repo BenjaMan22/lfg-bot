@@ -2,10 +2,18 @@ import {
   MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
+  type AutocompleteInteraction,
   type ChatInputCommandInteraction,
 } from "discord.js";
 import type { AppContext } from "../context.js";
-import { addGame, findGameByName, listGames, removeGame } from "../db/repos/games.js";
+import { listGames, removeGame } from "../db/repos/games.js";
+import { buildGameAddModal } from "../interactions/games.js";
+import {
+  decodeGamePick,
+  encodeGamePick,
+  searchSteam,
+  steamStoreUrl,
+} from "../steam/store.js";
 
 export const data = new SlashCommandBuilder()
   .setName("games")
@@ -15,22 +23,15 @@ export const data = new SlashCommandBuilder()
       .setName("add")
       .setDescription("Add a game")
       .addStringOption((o) =>
-        o.setName("name").setDescription("Game name").setRequired(true).setMaxLength(80),
-      )
-      .addIntegerOption((o) =>
         o
-          .setName("min")
-          .setDescription("Fewest players it works with")
-          .setRequired(true)
-          .setMinValue(1)
-          .setMaxValue(100),
-      )
-      .addIntegerOption((o) =>
-        o
-          .setName("max")
-          .setDescription("Most players it supports (leave empty for unlimited)")
-          .setMinValue(1)
-          .setMaxValue(100),
+          .setName("name")
+          .setDescription("Start typing to search Steam, or just type any name")
+          .setRequired(false)
+          // Autocomplete is the only place Discord offers live, server-side
+          // search: it exists on command options and nowhere else — not in
+          // modals, not in select menus. That is why the Steam lookup lives
+          // here rather than on the game picker in /gamenight create.
+          .setAutocomplete(true),
       ),
   )
   .addSubcommand((s) => s.setName("list").setDescription("List the library"))
@@ -59,29 +60,19 @@ export async function execute(
   const subcommand = interaction.options.getSubcommand();
 
   if (subcommand === "add") {
-    const name = interaction.options.getString("name", true).trim();
-    const min = interaction.options.getInteger("min", true);
-    const max = interaction.options.getInteger("max");
-
-    if (max !== null && max < min) {
-      await interaction.reply({
-        content: `**max** (${max}) cannot be below **min** (${min}).`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    if (findGameByName(ctx.db, guildId, name)) {
-      await interaction.reply({
-        content: `**${name}** is already in the library.`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const game = addGame(ctx.db, guildId, name, min, max, interaction.user.id);
-    await interaction.reply({
-      content: `Added **${game.name}** (${game.minPlayers}–${game.maxPlayers ?? "∞"} players).`,
-    });
+    // The option is optional, so `/games add` on its own still opens the
+    // blank modal exactly as before; a Steam pick just arrives prefilled.
+    const picked = interaction.options.getString("name");
+    const pick = picked ? decodeGamePick(picked) : null;
+    await interaction.showModal(
+      buildGameAddModal(
+        pick === null
+          ? undefined
+          : pick.kind === "steam"
+            ? { name: pick.name, link: steamStoreUrl(pick.appid) }
+            : { name: pick.name },
+      ),
+    );
     return;
   }
 
@@ -94,10 +85,18 @@ export async function execute(
       });
       return;
     }
-    const lines = games.map(
-      (g) => `• **${g.name}** — ${g.minPlayers}–${g.maxPlayers ?? "∞"} players`,
-    );
-    await interaction.reply({ content: lines.join("\n") });
+    const lines = games.map((g) => {
+      const base = `• **${g.name}** — ${g.minPlayers}–${g.maxPlayers ?? "∞"} players`;
+      return g.link ? `${base} — ${g.link}` : base;
+    });
+    // Suppressed so a library full of linked games doesn't unfurl into a
+    // wall of preview cards — one per line is plenty to read, no previews
+    // needed. /games add's own confirmation is a single game and keeps its
+    // preview, which is a nice confirmation that the link is the right one.
+    await interaction.reply({
+      content: lines.join("\n"),
+      flags: MessageFlags.SuppressEmbeds,
+    });
     return;
   }
 
@@ -118,4 +117,26 @@ export async function execute(
     content: messages[result],
     flags: MessageFlags.Ephemeral,
   });
+}
+
+/**
+ * Suggest Steam titles as the host types `/games add name:`.
+ *
+ * Discord gives this three seconds and no way to report an error, so
+ * `searchSteam` is written to return [] rather than throw — an empty
+ * suggestion list simply means the host types the name themselves, which is
+ * exactly the behaviour that existed before Steam was involved.
+ */
+export async function autocomplete(
+  interaction: AutocompleteInteraction,
+): Promise<void> {
+  const typed = interaction.options.getFocused();
+  const games = await searchSteam(typed);
+  await interaction.respond(
+    games.map((g) => ({
+      // The host sees the title; the handler receives appid and name.
+      name: g.name.slice(0, 100),
+      value: encodeGamePick(g),
+    })),
+  );
 }

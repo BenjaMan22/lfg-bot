@@ -175,6 +175,7 @@ describe("renderPoll", () => {
       "gn:votes:7",
       "gn:suggest:7",
       "gn:out:7",
+      "gn:trash:7",
     ]);
   });
 
@@ -189,7 +190,7 @@ describe("renderPoll", () => {
     const ids = rendered.components[0]
       .toJSON()
       .components.map((c) => (c as { custom_id: string }).custom_id);
-    expect(ids).toEqual(["gn:in:7", "gn:out:7"]);
+    expect(ids).toEqual(["gn:in:7", "gn:out:7", "gn:trash:7"]);
     expect(JSON.stringify(rendered.embeds[0].toJSON())).toMatch(/locked/i);
   });
 

@@ -5,6 +5,12 @@ export interface Game {
   name: string;
   minPlayers: number;
   maxPlayers: number | null;
+  /**
+   * Purely a display field — never read by ranking. Optional so the many
+   * `Game` fixtures in tests unrelated to links don't need to carry it;
+   * a game loaded from the repository always sets it explicitly.
+   */
+  link?: string | null;
 }
 
 export interface SchedulingInput {

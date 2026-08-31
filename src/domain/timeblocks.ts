@@ -51,6 +51,35 @@ function parseClockHour(raw: string, whole: string): number {
   return hour % 24;
 }
 
+/**
+ * How many whole hours a window covers. An end hour at or before the start
+ * means it crosses midnight into the following day.
+ */
+export function windowHours(window: HourWindow): number {
+  const { startHour, endHour } = window;
+  return endHour > startHour ? endHour - startHour : 24 - startHour + endHour;
+}
+
+/**
+ * A session that cannot fit inside its own window is unschedulable by
+ * construction: `rankNight` enumerates runs of at least `minSessionHours`, so
+ * a longer minimum means the run loop never executes and every night reports
+ * nothing viable — with no near misses either, since no run was ever built to
+ * miss by. Caught at creation, where the host can still fix it, rather than
+ * silently at the deadline after everyone has already answered.
+ */
+export function assertSessionFitsWindow(
+  minSessionHours: number,
+  window: HourWindow,
+): void {
+  const available = windowHours(window);
+  if (minSessionHours > available) {
+    throw new TimeParseError(
+      `A game night needs ${minSessionHours} hours in a row to be worth scheduling, and this window is only ${available}. Widen it — something like \`6pm-1am\`.`,
+    );
+  }
+}
+
 export function parseWindow(input: string): HourWindow {
   const parts = input.split("-");
   if (parts.length !== 2) {
@@ -63,7 +92,7 @@ export function parseWindow(input: string): HourWindow {
   if (startHour === endHour) {
     throw new TimeParseError("A game night window needs to be at least one hour long.");
   }
-  const length = endHour > startHour ? endHour - startHour : 24 - startHour + endHour;
+  const length = windowHours({ startHour, endHour });
   if (length > MAX_WINDOW_HOURS) {
     throw new TimeParseError(
       `A window can be at most ${MAX_WINDOW_HOURS} hours long, and "${input}" is ${length}. Narrow it to the hours people might actually play, like \`6pm-1am\`.`,
@@ -199,4 +228,24 @@ export function formatHourLabel(utcHour: number, tz: string): string {
 
 export function formatDayLabel(day: NightDay, tz: string): string {
   return DateTime.fromSeconds(day.startUtc, { zone: tz }).toFormat("ccc LLL d");
+}
+
+/**
+ * Hour labels for a set of instants, guaranteed distinct.
+ *
+ * On a DST fall-back night the clock repeats an hour, so two different
+ * instants format identically — "1a" and "1a". `hoursIn` correctly yields
+ * both, because both are real playable hours, but a dropdown offering two
+ * identical options is unusable: whichever the player picks, they have a 50%
+ * chance of claiming an hour they did not mean. Marking the repeat keeps the
+ * options tellable apart, in the order they actually happen.
+ */
+export function hourLabels(hours: number[], tz: string): string[] {
+  const seen = new Map<string, number>();
+  return hours.map((hour) => {
+    const label = formatHourLabel(hour, tz);
+    const previous = seen.get(label) ?? 0;
+    seen.set(label, previous + 1);
+    return previous === 0 ? label : `${label} (again)`;
+  });
 }

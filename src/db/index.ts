@@ -13,6 +13,7 @@ const schemaPath = fileURLToPath(new URL("./schema.sql", import.meta.url));
  */
 const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   { table: "nights", column: "failure_reason", definition: "TEXT" },
+  { table: "games", column: "link", definition: "TEXT" },
 ];
 
 function applyAddedColumns(db: DatabaseSync): void {
