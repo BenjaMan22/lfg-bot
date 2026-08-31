@@ -9,6 +9,7 @@ import {
 import type { AppContext } from "../context.js";
 import { addGame, findGameByName } from "../db/repos/games.js";
 import { GameLinkError, parseGameLink } from "../domain/gameLink.js";
+import { PlayerCountError, parsePlayerCounts } from "../domain/playerCounts.js";
 
 /** Values carried over from a Steam autocomplete pick, if there was one. */
 export interface GameAddPrefill {
@@ -36,15 +37,15 @@ export function buildGameAddModal(prefill: GameAddPrefill = {}): ModalBuilder {
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("min")
-          .setLabel("Fewest players it works with")
+          .setLabel("Fewest players (optional)")
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder("2")
-          .setRequired(true),
+          .setPlaceholder("Leave blank for 2")
+          .setRequired(false),
       ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("max")
-          .setLabel("Most players (blank = unlimited)")
+          .setLabel("Most players (optional)")
           .setStyle(TextInputStyle.Short)
           .setRequired(false),
       ),
@@ -77,25 +78,21 @@ export async function handleGameAddModal(
   }
 
   const name = interaction.fields.getTextInputValue("name").trim();
-  const minText = interaction.fields.getTextInputValue("min").trim();
-  const maxText = interaction.fields.getTextInputValue("max").trim();
   const linkText = interaction.fields.getTextInputValue("link");
-  const min = Number(minText);
-  const max = maxText === "" ? null : Number(maxText);
 
-  if (!Number.isInteger(min) || min < 1) {
-    await interaction.reply({
-      content: `"${minText}" is not a whole number of players.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
-  }
-  if (max !== null && (!Number.isInteger(max) || max < min)) {
-    await interaction.reply({
-      content: `"${maxText}" has to be a whole number no smaller than ${min}, or blank for unlimited.`,
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
+  let min: number;
+  let max: number | null;
+  try {
+    ({ min, max } = parsePlayerCounts(
+      interaction.fields.getTextInputValue("min"),
+      interaction.fields.getTextInputValue("max"),
+    ));
+  } catch (error) {
+    if (error instanceof PlayerCountError) {
+      await interaction.reply({ content: error.message, flags: MessageFlags.Ephemeral });
+      return;
+    }
+    throw error;
   }
   let link: string | null;
   try {
