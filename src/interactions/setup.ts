@@ -216,12 +216,12 @@ export async function handlePostButton(
   } catch (error) {
     // nights_one_open_per_channel fired: another draft was published between
     // the check above and here.
-    console.error("Could not publish night", { nightId, error });
+    log.error("Could not publish night", { nightId, error });
     published = false;
   }
   if (!published) {
     await message.delete().catch((error: unknown) =>
-      console.error("Could not remove an unpublished poll", { nightId, error }),
+      log.error("Could not remove an unpublished poll", { nightId, error }),
     );
     await interaction.editReply({
       content: "Someone posted a game night in this channel first, so I took that one back down. Cancel theirs, or use this channel's poll.",

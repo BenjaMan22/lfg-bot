@@ -1,6 +1,7 @@
 import { GuildScheduledEventEntityType, GuildScheduledEventPrivacyLevel, type Client } from "discord.js";
 import type { Suggestion } from "../domain/scheduling.js";
 import type { NightRow } from "../db/repos/nights.js";
+import { log } from "../log.js";
 
 /** Discord's hard limit on a Scheduled Event's name. */
 const EVENT_NAME_LIMIT = 100;
@@ -34,7 +35,7 @@ export async function createScheduledEvent(
   nowUtc: number = Math.floor(Date.now() / 1000),
 ): Promise<string | null> {
   if (hasAlreadyStarted(suggestion, nowUtc)) {
-    console.error("Skipping scheduled event: its window has already started", {
+    log.error("Skipping scheduled event: its window has already started", {
       nightId: night.id,
       startUtc: suggestion.startUtc,
       nowUtc,
@@ -69,7 +70,7 @@ export async function createScheduledEvent(
     return event.id;
   } catch (error) {
     // A missing Manage Events permission must not lose the decision itself.
-    console.error("Could not create scheduled event", { nightId: night.id, error });
+    log.error("Could not create scheduled event", { nightId: night.id, error });
     return null;
   }
 }
@@ -83,6 +84,6 @@ export async function deleteScheduledEvent(
     const guild = await client.guilds.fetch(guildId);
     await guild.scheduledEvents.delete(eventId);
   } catch (error) {
-    console.error("Could not delete scheduled event", { eventId, error });
+    log.error("Could not delete scheduled event", { eventId, error });
   }
 }

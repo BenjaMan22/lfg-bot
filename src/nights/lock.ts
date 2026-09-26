@@ -10,6 +10,7 @@ import {
 } from "../db/repos/nights.js";
 import { buildPollView, renderNightNow } from "../discord/updateQueue.js";
 import { createScheduledEvent, deleteScheduledEvent } from "../discord/events.js";
+import { log } from "../log.js";
 
 const SWEEP_MS = 30_000;
 const DRAFT_TTL_SECONDS = 3600;
@@ -74,12 +75,12 @@ async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promi
     // do not seed a roster, do not ping anyone. Retract the Scheduled Event
     // we just created, since cancel read event_id while it was still null
     // and cannot have deleted it.
-    console.error("Night stopped being open mid-lock; discarding the decision", {
+    log.error("Night stopped being open mid-lock; discarding the decision", {
       nightId: night.id,
     });
     if (eventId) await deleteScheduledEvent(client, night.guildId, eventId);
     await renderNightNow(client, db, night.id).catch((error) =>
-      console.error("Could not re-render a night that was cancelled mid-lock", {
+      log.error("Could not re-render a night that was cancelled mid-lock", {
         nightId: night.id,
         error,
       }),
@@ -114,7 +115,7 @@ async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promi
       });
     }
   } catch (error) {
-    console.error("Locked but could not finish rostering or announcing", {
+    log.error("Locked but could not finish rostering or announcing", {
       nightId: night.id,
       error,
     });
@@ -140,7 +141,7 @@ export async function processDueNights(
       // deadline must not discard a correctly-computed decision, so leave the
       // night 'open' and let the next 30-second sweep retry it.
       const giveUp = shouldGiveUp(night.deadlineUtc, processStartUtc, nowUtc, LOCK_RETRY_GRACE_SECONDS);
-      console.error(giveUp ? "Locking failed; giving up" : "Locking failed; will retry", {
+      log.error(giveUp ? "Locking failed; giving up" : "Locking failed; will retry", {
         nightId: night.id,
         deadlineUtc: night.deadlineUtc,
         processStartUtc,
@@ -158,7 +159,7 @@ export async function processDueNights(
       // showing a live countdown and response buttons. If the render is what
       // failed, this must not throw again.
       await renderNightNow(client, db, night.id).catch((renderError) =>
-        console.error("Could not render failed night", { nightId: night.id, error: renderError }),
+        log.error("Could not render failed night", { nightId: night.id, error: renderError }),
       );
     }
   }
@@ -178,7 +179,7 @@ export function startSweep(client: Client, db: DatabaseSync): NodeJS.Timeout {
     if (running) return;
     running = true;
     processDueNights(client, db, Math.floor(Date.now() / 1000), processStartUtc)
-      .catch((error) => console.error("Sweep failed", error))
+      .catch((error) => log.error("Sweep failed", error))
       .finally(() => {
         running = false;
       });

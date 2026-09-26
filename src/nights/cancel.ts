@@ -7,6 +7,7 @@ import type { AppContext } from "../context.js";
 import { cancelNight, type NightRow } from "../db/repos/nights.js";
 import { deleteScheduledEvent } from "../discord/events.js";
 import { renderNightNow } from "../discord/updateQueue.js";
+import { log } from "../log.js";
 
 /**
  * Shared by `/gamenight cancel` and the poll's trash-can button, so the two
@@ -45,7 +46,7 @@ export async function performCancel(
     }
     await renderNightNow(interaction.client, ctx.db, night.id);
   } catch (error) {
-    console.error("Cancelled, but could not finish tidying up", {
+    log.error("Cancelled, but could not finish tidying up", {
       nightId: night.id,
       error,
     });

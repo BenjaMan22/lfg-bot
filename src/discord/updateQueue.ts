@@ -12,6 +12,7 @@ import {
   getVotes,
 } from "../db/repos/nights.js";
 import { renderPoll, type LockedDetails, type PollView } from "./render.js";
+import { log } from "../log.js";
 
 const DEBOUNCE_MS = 1500;
 const pending = new Map<number, NodeJS.Timeout>();
@@ -139,7 +140,7 @@ export function queueRender(client: Client, db: DatabaseSync, nightId: number): 
     setTimeout(() => {
       pending.delete(nightId);
       renderNightNow(client, db, nightId).catch((error) =>
-        console.error("Render failed", { nightId, error }),
+        log.error("Render failed", { nightId, error }),
       );
     }, DEBOUNCE_MS),
   );
