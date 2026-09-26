@@ -114,7 +114,10 @@ export async function handleGameAddModal(
   }
 
   const game = addGame(ctx.db, guildId, name, min, max, interaction.user.id, link);
+  // Private: growing the library is housekeeping, not news for the channel.
+  // Anyone who wants to see it runs /games list.
   await interaction.reply({
     content: `Added **${game.name}** (${game.minPlayers}–${game.maxPlayers ?? "∞"} players).${link ? `\n${link}` : ""}`,
+    flags: MessageFlags.Ephemeral,
   });
 }

@@ -21,6 +21,7 @@ import {
   parseWindow,
 } from "../domain/timeblocks.js";
 import { requireTimezone } from "../discord/timezonePicker.js";
+import { log } from "../log.js";
 import { buildGameSetupComponents, librarySelectNote } from "./setup.js";
 
 /**
@@ -131,7 +132,12 @@ export async function handleGameNightCreateModal(
   const channelId = interaction.channelId;
 
   const tz = await requireTimezone(interaction, ctx);
-  if (!tz) return;
+  if (!tz) {
+    log.info("Create form paused: host has no timezone yet, showed the picker", {
+      user: interaction.user.id,
+    });
+    return;
+  }
 
   const now = DateTime.now().setZone(tz);
   const daysText = interaction.fields.getTextInputValue("day");
@@ -139,6 +145,24 @@ export async function handleGameNightCreateModal(
   const deadlineText = interaction.fields.getTextInputValue("deadline");
   const titleText = interaction.fields.getTextInputValue("title").trim();
   const pickedGameIds = interaction.fields.getStringSelectValues("games").map(Number);
+
+  // Exactly what the host typed, before any of it is interpreted — so a
+  // rejection below can be matched to the input that caused it.
+  const submitted = {
+    title: titleText,
+    gameIds: pickedGameIds,
+    days: daysText,
+    hours: windowText,
+    deadline: deadlineText,
+    timezone: tz,
+  };
+  log.info("Create form submitted", submitted);
+
+  /** Tell the host why, and leave the same reason in the console. */
+  const reject = async (reason: string): Promise<void> => {
+    log.warn("Create form rejected", { reason, ...submitted });
+    await interaction.reply({ content: reason, flags: MessageFlags.Ephemeral });
+  };
 
   let days, window, deadlineUtc;
   try {
@@ -151,7 +175,7 @@ export async function handleGameNightCreateModal(
     assertSessionFitsWindow(MIN_SESSION_HOURS, window);
   } catch (error) {
     if (error instanceof TimeParseError) {
-      await interaction.reply({ content: error.message, flags: MessageFlags.Ephemeral });
+      await reject(error.message);
       return;
     }
     throw error;
@@ -159,10 +183,9 @@ export async function handleGameNightCreateModal(
 
   const expanded = expandDays(days, window, tz);
   if (deadlineUtc >= expanded[0].startUtc) {
-    await interaction.reply({
-      content: "The deadline has to be before the first day's window starts, or there is no time to decide.",
-      flags: MessageFlags.Ephemeral,
-    });
+    await reject(
+      "The deadline has to be before the first day's window starts, or there is no time to decide.",
+    );
     return;
   }
 
@@ -183,6 +206,7 @@ export async function handleGameNightCreateModal(
   // already selected — it is there to adjust, attach a voice channel, and
   // post, not to ask the same question a second time.
   setNightGames(ctx.db, nightId, pickedGameIds);
+  log.info("Draft night created", { nightId, days: expanded.length });
 
   const library = listGames(ctx.db, guildId);
   await interaction.reply({
