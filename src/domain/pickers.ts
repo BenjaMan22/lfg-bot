@@ -1,5 +1,5 @@
 import { DateTime } from "luxon";
-import { MAX_WINDOW_HOURS, type DayWindow, type NightDay } from "./timeblocks.js";
+import { MAX_WINDOW_HOURS, expandDays, type DayWindow, type NightDay } from "./timeblocks.js";
 
 /**
  * Every night ranks runs of at least this many hours. Fixed rather than a
@@ -104,6 +104,24 @@ export function windowFromStartAndLength(
   lengthMinutes: number,
 ): DayWindow {
   return { startMinutes, endMinutes: (startMinutes + lengthMinutes) % MINUTES_PER_DAY };
+}
+
+/**
+ * The picked days as instants, each lasting exactly `lengthMinutes` of real
+ * time. `expandDays` works in wall-clock time, so across a DST fall-back a
+ * 12-hour window would become 13 real hours — 26 half-hour slots, one more
+ * than a Discord dropdown can list. "Length" is how long the host could play,
+ * so it is measured in real time.
+ */
+export function expandPickedDays(
+  isoDates: string[],
+  startMinutes: number,
+  lengthMinutes: number,
+  tz: string,
+): NightDay[] {
+  return expandDays(isoDates, windowFromStartAndLength(startMinutes, lengthMinutes), tz).map(
+    (day) => ({ ...day, endUtc: day.startUtc + lengthMinutes * 60 }),
+  );
 }
 
 /** When the sweep locks a night in. `days` must be non-empty and sorted. */

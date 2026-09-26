@@ -7,11 +7,12 @@ import {
   SELECT_OPTION_LIMIT,
   START_TIME_OPTIONS,
   dayOptions,
+  expandPickedDays,
   lockIsStillAhead,
   lockTimeFor,
   windowFromStartAndLength,
 } from "./pickers.js";
-import { MAX_WINDOW_HOURS, expandDays } from "./timeblocks.js";
+import { MAX_WINDOW_HOURS, expandDays, slotsIn } from "./timeblocks.js";
 
 const CHI = "America/Chicago";
 // Saturday afternoon.
@@ -131,6 +132,33 @@ describe("lockTimeFor", () => {
     );
     expect(LOCK_LEAD_SECONDS).toBe(3600);
     expect(lockTimeFor(days)).toBe(days[0].startUtc - LOCK_LEAD_SECONDS);
+  });
+});
+
+describe("expandPickedDays", () => {
+  it("matches expandDays on an ordinary day", () => {
+    const isoDates = ["2026-09-28"];
+    const startMinutes = 19 * 60;
+    const lengthMinutes = 3 * 60;
+    expect(expandPickedDays(isoDates, startMinutes, lengthMinutes, CHI)).toEqual(
+      expandDays(isoDates, windowFromStartAndLength(startMinutes, lengthMinutes), CHI),
+    );
+  });
+
+  it("gives exactly 24 slots and a 12-hour span across a Chicago fall-back", () => {
+    const [day] = expandPickedDays(["2026-10-31"], 18 * 60, 12 * 60, CHI);
+    expect(slotsIn(day)).toHaveLength(24);
+    expect(day.endUtc - day.startUtc).toBe(12 * 3600);
+  });
+
+  it("gives exactly 24 slots across a London fall-back", () => {
+    const [day] = expandPickedDays(["2026-10-24"], 14 * 60, 12 * 60, "Europe/London");
+    expect(slotsIn(day)).toHaveLength(24);
+  });
+
+  it("gives exactly 24 slots across a Chicago spring-forward", () => {
+    const [day] = expandPickedDays(["2027-03-13"], 18 * 60, 12 * 60, CHI);
+    expect(slotsIn(day)).toHaveLength(24);
   });
 });
 

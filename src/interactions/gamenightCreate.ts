@@ -12,16 +12,16 @@ import type { AppContext } from "../context.js";
 import type { Game } from "../domain/scheduling.js";
 import { listGames } from "../db/repos/games.js";
 import { createDraftNight, setNightGames } from "../db/repos/nights.js";
-import { MAX_DAYS, expandDays } from "../domain/timeblocks.js";
+import { MAX_DAYS } from "../domain/timeblocks.js";
 import {
   LENGTH_OPTIONS,
   MIN_SESSION_HOURS,
   SELECT_OPTION_LIMIT,
   START_TIME_OPTIONS,
   dayOptions,
+  expandPickedDays,
   lockIsStillAhead,
   lockTimeFor,
-  windowFromStartAndLength,
   type PickerOption,
 } from "../domain/pickers.js";
 import { playerCountLabel } from "../domain/playerCounts.js";
@@ -163,11 +163,7 @@ export async function handleGameNightCreateModal(
   };
   log.info("Create form submitted", submitted);
 
-  const expanded = expandDays(
-    pickedDays,
-    windowFromStartAndLength(startMinutes, lengthMinutes),
-    tz,
-  );
+  const expanded = expandPickedDays(pickedDays, startMinutes, lengthMinutes, tz);
   const lockUtc = lockTimeFor(expanded);
 
   // The only input a picker cannot rule out: time passing. A first day
