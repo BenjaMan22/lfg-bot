@@ -110,3 +110,12 @@ export function windowFromStartAndLength(
 export function lockTimeFor(days: NightDay[]): number {
   return days[0].startUtc - LOCK_LEAD_SECONDS;
 }
+
+/**
+ * Whether a night can still be answered: its lock time is ahead of now.
+ * Checked when the form is submitted AND when the night is posted, since a
+ * draft can sit on the setup screen past the moment it would have locked.
+ */
+export function lockIsStillAhead(lockUtc: number, nowUtc: number): boolean {
+  return lockUtc > nowUtc;
+}

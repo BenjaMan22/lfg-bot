@@ -7,6 +7,7 @@ import {
   SELECT_OPTION_LIMIT,
   START_TIME_OPTIONS,
   dayOptions,
+  lockIsStillAhead,
   lockTimeFor,
   windowFromStartAndLength,
 } from "./pickers.js";
@@ -130,5 +131,19 @@ describe("lockTimeFor", () => {
     );
     expect(LOCK_LEAD_SECONDS).toBe(3600);
     expect(lockTimeFor(days)).toBe(days[0].startUtc - LOCK_LEAD_SECONDS);
+  });
+});
+
+describe("lockIsStillAhead", () => {
+  it("is true when the lock is a second ahead", () => {
+    expect(lockIsStillAhead(1_000_001, 1_000_000)).toBe(true);
+  });
+
+  it("is false when the lock equals now", () => {
+    expect(lockIsStillAhead(1_000_000, 1_000_000)).toBe(false);
+  });
+
+  it("is false when the lock is in the past", () => {
+    expect(lockIsStillAhead(999_999, 1_000_000)).toBe(false);
   });
 });

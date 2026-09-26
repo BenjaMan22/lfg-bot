@@ -19,6 +19,7 @@ import {
   SELECT_OPTION_LIMIT,
   START_TIME_OPTIONS,
   dayOptions,
+  lockIsStillAhead,
   lockTimeFor,
   windowFromStartAndLength,
   type PickerOption,
@@ -172,7 +173,7 @@ export async function handleGameNightCreateModal(
   // The only input a picker cannot rule out: time passing. A first day
   // starting within the hour leaves nobody time to answer — and a modal left
   // open past midnight offers a "today" that has become yesterday.
-  if (lockUtc <= now.toUnixInteger()) {
+  if (!lockIsStillAhead(lockUtc, now.toUnixInteger())) {
     const reason =
       "Your first day starts in less than an hour — pick a later start time or day, so people have time to answer.";
     log.warn("Create form rejected", { reason, ...submitted });

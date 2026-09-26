@@ -11,6 +11,7 @@ import {
   type StringSelectMenuInteraction,
 } from "discord.js";
 import type { AppContext } from "../context.js";
+import { lockIsStillAhead } from "../domain/pickers.js";
 import { playerCountLabel } from "../domain/playerCounts.js";
 import type { Game } from "../domain/scheduling.js";
 import {
@@ -23,6 +24,7 @@ import {
 } from "../db/repos/nights.js";
 import { buildPollView } from "../discord/updateQueue.js";
 import { renderPoll } from "../discord/render.js";
+import { log } from "../log.js";
 
 /** A jump link to a poll, or a plain description when we never stored one. */
 export function messageLink(
@@ -179,6 +181,20 @@ export async function handlePostButton(
   if (alreadyOpen) {
     await interaction.editReply({
       content: `This channel already has a game night running: ${messageLink(night.guildId, night.channelId, alreadyOpen.messageId)}\nCancel that one with \`/gamenight cancel\` before posting another.`,
+      components: [],
+    });
+    return;
+  }
+
+  // The create-time check is minutes old by now too: a draft can sit on the
+  // setup screen for up to an hour, so its lock time may have already passed.
+  // Posting it anyway would lock at the next sweep with nobody having had a
+  // chance to answer.
+  if (!lockIsStillAhead(night.deadlineUtc, Math.floor(Date.now() / 1000))) {
+    log.warn("Post refused: lock time has passed", { nightId, deadlineUtc: night.deadlineUtc });
+    await interaction.editReply({
+      content:
+        "Your first day starts in less than an hour — pick a later start time or day, so people have time to answer.",
       components: [],
     });
     return;
