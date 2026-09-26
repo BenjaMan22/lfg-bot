@@ -52,7 +52,7 @@ async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promi
   const winner = view.result.top[0];
 
   if (!winner) {
-    // The one genuine domain failure: the ranking cleared no game's minimum.
+    // The one genuine domain failure: no respondent had a full session free and a game picked.
     failNight(db, night.id, "no_viable");
     await renderNightNow(client, db, night.id);
     return;

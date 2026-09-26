@@ -5,8 +5,8 @@ import { allRows, withTransaction } from "../index.js";
 export type NightStatus = "draft" | "open" | "locked" | "failed" | "cancelled";
 
 /**
- * Why a night ended up `failed`. `no_viable` is the domain outcome — the
- * ranking found no combination clearing any game's minimum. `lock_error` is
+ * Why a night ended up `failed`. `no_viable` is the domain outcome — no
+ * respondent had a full session free and a game picked. `lock_error` is
  * an infrastructure give-up: the lock kept throwing past its retry window.
  * The two say very different things to a channel, so they are stored rather
  * than inferred at render time.
