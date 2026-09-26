@@ -55,9 +55,16 @@ dropdown cannot express either.
 ### The poll
 
 - `Deadline <t:…:R>` becomes `Picks the night <t:…:R>`.
-- A failed night with responses reads *"No viable night. Nobody was free for
-  the same 2 hours with a game in common."* The zero-response and lock-error
-  messages are unchanged. "Closest misses" is removed.
+- A failed night with responses reads *"No viable night. Nobody who answered
+  was free for 2 hours in a row and also picked a game."* With no minimum, a
+  single person is enough, so the only way to fail is that no respondent had
+  both a full session free and a game picked. The zero-response and
+  lock-error messages are unchanged. "Closest misses" is removed.
+- On an open poll with no viable combination yet, "Best right now" reads
+  *"Nothing yet — no responses yet."* only when nobody has answered;
+  otherwise it reads *"Nothing yet — nobody is free for 2 hours in a row with
+  a game picked."* (Previously near misses filled that space, so a poll with
+  responses never showed the "no responses" text.)
 - The oversubscription note ("6 in, plays 4 — split lobbies?") is unchanged.
 
 ### Adding games
