@@ -1,17 +1,19 @@
 # discord-bots — game night bot
 
-A Discord bot for scheduling game nights. A host proposes some days, an
-evening time window, and a shortlist of games from the server's library.
-Players answer with the hours they're actually free and which of those
-games they'd play. At the deadline, the bot doesn't ask anyone to decide —
-it works out the best (time window × game) combination itself, posts the
-result, and creates a Discord Scheduled Event for it.
+A Discord bot for scheduling game nights. A host picks some upcoming days,
+a start time and a length, and a shortlist of games from the server's
+library. Players answer with the hours they're actually free and which of
+those games they'd play. An hour before the first day, the bot doesn't ask
+anyone to decide — it works out the best (time window × game) combination
+itself, posts the result, and creates a Discord Scheduled Event for it.
 
 ## What it does, in more detail
 
-- `/gamenight create` opens a short private setup flow for the host: pick
-  days, an evening window, a deadline, and a shortlist of games from the
-  server's library, then post the poll to the channel.
+- `/gamenight create` opens a form where every date and time is picked from
+  a dropdown, with no typing: up to five days from the next 25, a start
+  time, and how long you could play. A private setup screen follows for
+  adjusting games and attaching a voice channel, then **Post it** puts the
+  poll in the channel.
 - The poll is a single message with buttons. Players click **Set
   availability** to pick the hours they're free (per day, in their own
   timezone), **Pick games** to say which of the shortlisted games they'd
@@ -19,11 +21,11 @@ result, and creates a Discord Scheduled Event for it.
   out** to opt out entirely. The message re-renders after every response,
   showing a live availability grid, vote counts, and the top-ranked
   time/game combinations so far.
-- At the deadline, the bot picks the best combination on its own — the
-  (time window × game) pairing with the largest roster that clears the
-  game's minimum player count — locks the night, creates a Discord
-  Scheduled Event, and pings the roster. If nothing clears any game's
-  minimum, the night is marked failed and the near-misses are shown instead.
+- An hour before the first day starts, the bot picks the best combination
+  on its own — the (time window × game) pairing with the largest roster —
+  locks the night, creates a Discord Scheduled Event, and pings the roster.
+  If nobody who answered was free for two hours in a row with a game
+  picked, the night is marked failed instead.
 - Once locked, players can still adjust with **I'm in** / **I'm out** on
   the final card.
 
@@ -88,24 +90,25 @@ npm run dev      # starts the bot
 
 ### `/gamenight create`
 
-Starts the setup flow for a new game night in the channel it's run in.
+No options. Opens a form for a new game night in the channel it's run in.
 Only one open night is allowed per channel at a time.
 
-| Option      | Required | Description                                            |
-| ----------- | -------- | -------------------------------------------------------- |
-| `days`      | yes      | Comma-separated days, e.g. `fri,sat` or `2026-08-28`. At most 5 days — Discord only allows five dropdowns in one message. |
-| `window`    | yes      | The evening window each day, e.g. `6pm-1am`.             |
-| `deadline`  | yes      | When responses close, e.g. `thu 9pm` or `24h`. Must land before the first day's window starts — otherwise there's no time left to decide. |
-| `minhours`  | no       | Shortest session worth having, in hours. 1–12, default 2. |
-| `voice`     | no       | A voice channel to attach the Scheduled Event to.        |
-| `title`     | no       | Title for the poll post (up to 80 characters).           |
+| Field      | Required | How you fill it                                                        |
+| ---------- | -------- | ---------------------------------------------------------------------- |
+| Title      | no       | Text, up to 80 characters. Defaults to "Game Night".                   |
+| Games      | yes      | Pick from the server's library (the first 25 alphabetically).          |
+| Days       | yes      | Pick up to 5 of the next 25 days.                                      |
+| Start time | yes      | Noon to 11:30pm, in half hours, in your timezone.                      |
+| Length     | yes      | 2 to 12 hours, in half hours. A night that runs past midnight just works. |
 
-Example: `/gamenight create days:fri,sat window:6pm-1am deadline:thu 9pm
-minhours:3 title:Weekend Game Night`
+There's no deadline to set: the bot locks the night one hour before the
+first day you picked starts, so that day has to start more than an hour
+from now.
 
-This replies privately with a game picker and an **Add a game** button
-(for anything not already in the library) plus a **Post it** button. The
-poll only becomes visible to the channel once the host clicks **Post it**.
+After you submit, a private setup screen lets you adjust the games, add one
+that isn't in the library yet (**Add a game**), attach a voice channel for
+the Scheduled Event, and **Post it**. The poll only becomes visible to the
+channel once you click **Post it**.
 
 ### `/gamenight cancel`
 
@@ -120,15 +123,16 @@ confirming the bot is online and responding.
 
 ### `/games add`
 
-Adds a game to the server's shared library.
+Adds a game to the server's shared library. Start typing in the optional
+`name` option to search Steam, or skip it. Either way, a form opens:
 
-| Option | Required | Description                                          |
-| ------ | -------- | ------------------------------------------------------ |
-| `name` | yes      | Game name (up to 80 characters).                       |
-| `min`  | yes      | Fewest players it works with.                           |
-| `max`  | no       | Most players it supports. Leave empty for unlimited.    |
+| Field        | Required | Description                                                     |
+| ------------ | -------- | --------------------------------------------------------------- |
+| Game name    | yes      | Up to 80 characters. Pre-filled if you picked a Steam title.    |
+| Most players | no       | The most people it supports. Leave blank for any number.        |
+| Link         | no       | A store page or website, starting with `http://` or `https://`. |
 
-Example: `/games add name:Codenames min:4 max:8`
+The confirmation is only visible to you.
 
 ### `/games list`
 
@@ -154,12 +158,12 @@ yet — you only need to run this command directly to change it later.
 
 ## How a game night actually works, end to end
 
-1. A host runs `/gamenight create` with days, a window, a deadline, and
-   optionally a minimum session length, voice channel, and title. The bot
-   replies privately with a game picker.
-2. The host picks games from the library (or adds a new one on the spot),
-   then clicks **Post it**. The poll goes live in the channel as a single
-   message.
+1. A host runs `/gamenight create` and picks a title, games, up to five
+   days, a start time and a length — all from dropdowns. A private setup
+   screen follows.
+2. The host adjusts the games if needed (or adds a new one on the spot),
+   optionally attaches a voice channel, then clicks **Post it**. The poll
+   goes live in the channel as a single message.
 3. Every player who wants in clicks **Set availability** and picks the
    hours they're free on each proposed day, shown in their own timezone
    (the bot asks for it once, the first time it's needed, and remembers
@@ -169,12 +173,11 @@ yet — you only need to run this command directly to change it later.
 4. The poll message updates after every response: an availability grid,
    vote counts per game, and the top few (time window × game) combinations
    ranked by roster size, right on the card.
-5. At the deadline, a background sweep (checked every 30 seconds) picks
-   the best combination itself — the one with the largest roster that
-   still clears the game's minimum player count — creates a Discord
-   Scheduled Event for it, posts the result, and pings the roster. If
-   nothing clears any game's minimum, the night is marked failed and shows
-   the closest near-misses instead.
+5. An hour before the first day starts, a background sweep (checked every
+   30 seconds) picks the best combination itself — the one with the
+   largest roster — creates a Discord Scheduled Event for it, posts the
+   result, and pings the roster. If nobody who answered was free for two
+   hours in a row with a game picked, the night is marked failed instead.
 6. After locking, players can still adjust with **I'm in** / **I'm out**
    on the final card.
 
