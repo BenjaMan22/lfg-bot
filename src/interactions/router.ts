@@ -117,7 +117,17 @@ export async function routeInteraction(
     }
 
     if (elapsedMs > SLOW_RESPONSE_MS) {
-      log.warn(`Handler took ${elapsedMs}ms — Discord only allows 3000ms to respond`, described);
+      // A handler that deferred first (like Post it) legitimately runs past
+      // this — it already acknowledged Discord within the window, so the
+      // total handler time afterwards is not a warning sign.
+      if (interaction.isRepliable() && interaction.deferred) {
+        log.info(`Interaction handled in ${elapsedMs}ms (deferred)`, { what: described.what });
+      } else {
+        log.warn(
+          `Handler took ${elapsedMs}ms in total — a problem only if it hadn't replied or deferred within 3000ms`,
+          described,
+        );
+      }
     } else if (verbose) {
       log.info(`Interaction handled in ${elapsedMs}ms`, { what: described.what });
     }
