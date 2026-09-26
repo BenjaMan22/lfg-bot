@@ -13,7 +13,7 @@ import type { Game, Suggestion } from "../domain/scheduling.js";
  * reading createScheduledEvent, which is a thin, linear wrapper around them.
  */
 
-const game: Game = { id: 1, name: "Deep Rock Galactic", minPlayers: 2, maxPlayers: 4 };
+const game: Game = { id: 1, name: "Deep Rock Galactic", maxPlayers: 4 };
 
 function suggestion(overrides: Partial<Suggestion> = {}): Suggestion {
   return {

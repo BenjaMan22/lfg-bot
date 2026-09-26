@@ -4,6 +4,7 @@ import {
   ButtonStyle,
   EmbedBuilder,
 } from "discord.js";
+import { MIN_SESSION_HOURS } from "../domain/pickers.js";
 import type { Game, SchedulingResult } from "../domain/scheduling.js";
 import {
   formatDayLabel,
@@ -153,32 +154,25 @@ function gameLine(view: PollView): string {
 }
 
 function suggestionLines(view: PollView): string {
-  if (view.result.top.length > 0) {
-    return view.result.top
-      .map((s, index) => {
-        const flag = s.oversubscribed
-          ? ` — ${s.roster.length} in, plays ${s.game.maxPlayers}, split lobbies?`
-          : "";
-        return [
-          `**${index + 1}. ${dayAndClock(s.startUtc)}–${clock(s.endUtc)} · ${s.game.name}** · ${s.roster.length} players${flag}`,
-          mentionList(s.roster, SUGGESTION_MENTION_CAP),
-        ].join("\n");
-      })
-      .join("\n\n");
+  if (view.result.top.length === 0) {
+    // Near misses used to fill this space whenever anyone had answered, so
+    // the "no responses" wording only ever showed on an empty poll. Without
+    // them, it has to check — a poll with answers must not claim it has none.
+    return view.responderIds.size === 0
+      ? "_Nothing yet — no responses yet._"
+      : `_Nothing yet — nobody is free for ${MIN_SESSION_HOURS} hours in a row with a game picked._`;
   }
-  if (view.result.nearMisses.length > 0) {
-    // An open poll is reporting a live count that can still change; a failed
-    // one is explaining what happened. Same numbers, different tense — "had"
-    // on a running poll reads as a post-mortem on something still in play.
-    const verb = view.status === "open" ? "has" : "had";
-    return view.result.nearMisses
-      .map(
-        (m) =>
-          `${dayAndClock(m.startUtc)}–${clock(m.endUtc)} · **${m.game.name}** ${verb} ${m.rosterSize}; needs ${m.game.minPlayers}.`,
-      )
-      .join("\n");
-  }
-  return "_Nothing yet — no responses yet._";
+  return view.result.top
+    .map((s, index) => {
+      const flag = s.oversubscribed
+        ? ` — ${s.roster.length} in, plays ${s.game.maxPlayers}, split lobbies?`
+        : "";
+      return [
+        `**${index + 1}. ${dayAndClock(s.startUtc)}–${clock(s.endUtc)} · ${s.game.name}** · ${s.roster.length} players${flag}`,
+        mentionList(s.roster, SUGGESTION_MENTION_CAP),
+      ].join("\n");
+    })
+    .join("\n\n");
 }
 
 export function renderPoll(view: PollView): {
@@ -236,8 +230,12 @@ export function renderPoll(view: PollView): {
       // than falling through to the near-miss placeholder.
       embed.setDescription("**No viable night.** Nobody responded before the deadline.");
     } else {
-      embed.setDescription("**No viable night.** Closest misses:");
-      embed.addFields({ name: "Near misses", value: fitField(suggestionLines(view)) });
+      // With no per-game minimum, one person is enough — so the only way to
+      // fail with answers in hand is that nobody had both a full session
+      // free and a game picked.
+      embed.setDescription(
+        `**No viable night.** Nobody who answered was free for ${MIN_SESSION_HOURS} hours in a row and also picked a game.`,
+      );
     }
     return { embeds: [embed], components: [] };
   }

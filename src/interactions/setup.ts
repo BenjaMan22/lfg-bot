@@ -11,6 +11,7 @@ import {
   type StringSelectMenuInteraction,
 } from "discord.js";
 import type { AppContext } from "../context.js";
+import { playerCountLabel } from "../domain/playerCounts.js";
 import type { Game } from "../domain/scheduling.js";
 import {
   getNight,
@@ -89,7 +90,7 @@ export function buildGameSetupComponents(
         .addOptions(
           library.slice(0, SELECT_OPTION_LIMIT).map((g) => ({
             label: g.name.slice(0, 100),
-            description: `${g.minPlayers}–${g.maxPlayers ?? "∞"} players`,
+            description: playerCountLabel(g.maxPlayers),
             value: String(g.id),
             default: chosen.has(g.id),
           })),

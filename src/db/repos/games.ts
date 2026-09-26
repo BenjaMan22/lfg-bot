@@ -5,7 +5,6 @@ import { allRows } from "../index.js";
 interface GameRow {
   id: number;
   name: string;
-  min_players: number;
   max_players: number | null;
   link: string | null;
 }
@@ -13,18 +12,21 @@ interface GameRow {
 const toGame = (row: GameRow): Game => ({
   id: row.id,
   name: row.name,
-  minPlayers: row.min_players,
   maxPlayers: row.max_players,
   link: row.link,
 });
 
-const SELECT = "SELECT id, name, min_players, max_players, link FROM games";
+const SELECT = "SELECT id, name, max_players, link FROM games";
 
+/**
+ * `min_players` is written as a literal 1: the column outlived the feature,
+ * and SQLite cannot drop a column referenced by a CHECK constraint without
+ * rebuilding the table. Nothing reads it.
+ */
 export function addGame(
   db: DatabaseSync,
   guildId: string,
   name: string,
-  minPlayers: number,
   maxPlayers: number | null,
   createdBy: string,
   link: string | null = null,
@@ -33,13 +35,12 @@ export function addGame(
   const result = db
     .prepare(
       `INSERT INTO games (guild_id, name, min_players, max_players, created_by, link)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, 1, ?, ?, ?)`,
     )
-    .run(guildId, trimmed, minPlayers, maxPlayers, createdBy, link);
+    .run(guildId, trimmed, maxPlayers, createdBy, link);
   return {
     id: Number(result.lastInsertRowid),
     name: trimmed,
-    minPlayers,
     maxPlayers,
     link,
   };

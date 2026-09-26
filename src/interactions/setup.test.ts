@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { buildGameSetupComponents, librarySelectNote } from "./setup.js";
 import type { Game } from "../domain/scheduling.js";
 
-const catan: Game = { id: 1, name: "Catan", minPlayers: 3, maxPlayers: 4 };
-const lethal: Game = { id: 2, name: "Lethal Company", minPlayers: 2, maxPlayers: 4 };
-const added: Game = { id: 3, name: "Added Later", minPlayers: 2, maxPlayers: null };
+const catan: Game = { id: 1, name: "Catan", maxPlayers: 4 };
+const lethal: Game = { id: 2, name: "Lethal Company", maxPlayers: 4 };
+const added: Game = { id: 3, name: "Added Later", maxPlayers: null };
 
 describe("buildGameSetupComponents", () => {
   it("offers every library game as an option", () => {
@@ -41,7 +41,6 @@ describe("buildGameSetupComponents", () => {
     const library: Game[] = Array.from({ length: 30 }, (_, i) => ({
       id: i + 1,
       name: `Game ${i + 1}`,
-      minPlayers: 1,
       maxPlayers: null,
     }));
     const [gameRow] = buildGameSetupComponents(1, library, [], null);

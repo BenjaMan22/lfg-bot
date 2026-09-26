@@ -20,9 +20,8 @@ const SLOT = 1800;
 const slotsForHours = (d: NightDay, hourOffsets: number[]): number[] =>
   hourOffsets.flatMap((o) => [at(d, o), at(d, o) + SLOT]);
 
-const deepRock: Game = { id: 1, name: "Deep Rock", minPlayers: 4, maxPlayers: 4 };
-const lethal: Game = { id: 2, name: "Lethal Company", minPlayers: 2, maxPlayers: 4 };
-const solo: Game = { id: 3, name: "Solo Game", minPlayers: 1, maxPlayers: null };
+const lethal: Game = { id: 2, name: "Lethal Company", maxPlayers: 4 };
+const solo: Game = { id: 3, name: "Solo Game", maxPlayers: null };
 
 function input(over: Partial<SchedulingInput> = {}): SchedulingInput {
   return {
@@ -50,14 +49,15 @@ function everyone(
 
 describe("rankNight", () => {
   it("returns nothing when nobody has responded", () => {
-    expect(rankNight(input())).toEqual({ top: [], nearMisses: [] });
+    expect(rankNight(input())).toEqual({ top: [] });
   });
 
-  it("returns nothing when one person is free and the game needs two", () => {
+  it("suggests a night when a single person is free and wants a game", () => {
+    // No per-game minimum: one interested person is enough to schedule.
     const d = day(0, 6);
     const result = rankNight(input(everyone(d, ["a"], [0, 1, 2], [2])));
-    expect(result.top).toEqual([]);
-    expect(result.nearMisses[0]).toMatchObject({ rosterSize: 1, shortfall: 1 });
+    expect(result.top).toHaveLength(1);
+    expect(result.top[0].roster).toEqual(["a"]);
   });
 
   it("suggests a window when enough people are free for all of it", () => {
@@ -117,15 +117,6 @@ describe("rankNight", () => {
       }),
     );
     expect(result.top[0].roster.sort()).toEqual(["a", "b"]);
-  });
-
-  it("reports a roster below min_players as a near miss, never a suggestion", () => {
-    const d = day(0, 6);
-    const result = rankNight(
-      input({ ...everyone(d, ["a", "b", "c"], [0, 1, 2], [1]), games: [deepRock] }),
-    );
-    expect(result.top).toEqual([]);
-    expect(result.nearMisses[0]).toMatchObject({ game: deepRock, rosterSize: 3, shortfall: 1 });
   });
 
   it("keeps a roster above max_players but flags it", () => {
@@ -231,20 +222,6 @@ describe("rankNight", () => {
     expect(result.top).toHaveLength(3);
   });
 
-  it("ranks near misses by smallest shortfall first", () => {
-    const d = day(0, 6);
-    const almost: Game = { id: 4, name: "Almost", minPlayers: 3, maxPlayers: null };
-    const distant: Game = { id: 5, name: "Distant", minPlayers: 8, maxPlayers: null };
-    const result = rankNight(
-      input({
-        games: [almost, distant],
-        ...everyone(d, ["a", "b"], [0, 1, 2], [4, 5]),
-      }),
-    );
-    expect(result.top).toEqual([]);
-    expect(result.nearMisses[0].game).toEqual(almost);
-  });
-
   it("treats users in different timezones as overlapping when the UTC hour matches", () => {
     const d = day(0, 6);
     // Three users picked "8pm" in three zones; only two produced the same instant.
@@ -284,8 +261,8 @@ describe("rankNight", () => {
 
   it("prefers the more-voted game when players, length and start all tie", () => {
     const d = day(0, 6);
-    const popular: Game = { id: 6, name: "Popular", minPlayers: 2, maxPlayers: null };
-    const niche: Game = { id: 7, name: "Niche", minPlayers: 2, maxPlayers: null };
+    const popular: Game = { id: 6, name: "Popular", maxPlayers: null };
+    const niche: Game = { id: 7, name: "Niche", maxPlayers: null };
     const result = rankNight(input({
       days: [day(0, 2)],
       games: [niche, popular],
@@ -303,28 +280,11 @@ describe("rankNight", () => {
     expect(result.top[0].game).toEqual(popular);
   });
 
-  it("returns no near misses once anything is viable", () => {
-    const d = day(0, 6);
-    const result = rankNight(input({
-      games: [lethal, deepRock],
-      ...everyone(d, ["a", "b"], [0, 1, 2], [1, 2]),
-    }));
-    expect(result.top.length).toBeGreaterThan(0);
-    expect(result.nearMisses).toEqual([]);
-  });
-
-  it("prefers the longer window for a near miss when shortfall and roster size tie", () => {
-    const d = day(0, 6);
-    const result = rankNight(input(everyone(d, ["a"], [0, 1, 2, 3], [2])));
-    expect(result.top).toEqual([]);
-    expect(result.nearMisses[0]).toMatchObject({ startUtc: at(d, 0), endUtc: at(d, 4) });
-  });
-
   it("returns nothing when minSessionHours is not a positive number", () => {
     const d = day(0, 6);
     const result = rankNight(
       input({ ...everyone(d, ["a", "b"], [0, 1, 2], [2]), minSessionHours: 0 }),
     );
-    expect(result).toEqual({ top: [], nearMisses: [] });
+    expect(result).toEqual({ top: [] });
   });
 });

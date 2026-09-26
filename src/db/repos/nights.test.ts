@@ -115,7 +115,7 @@ describe("nights repository", () => {
   });
 
   it("lets a channel open a new night once the previous one is finished", () => {
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     const first = makeDraftIn("c5");
     publishNight(db, first, "m1");
     lockNight(db, first, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1");
@@ -126,8 +126,8 @@ describe("nights repository", () => {
 
   it("replaces the game set rather than appending", () => {
     const id = makeDraft();
-    const a = addGame(db, "g1", "A", 1, null, "u1");
-    const b = addGame(db, "g1", "B", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
+    const b = addGame(db, "g1", "B", null, "u1");
     setNightGames(db, id, [a.id, b.id]);
     setNightGames(db, id, [b.id]);
     expect(getNightGameIds(db, id)).toEqual([b.id]);
@@ -139,7 +139,7 @@ describe("nights repository", () => {
     // rewrite a live poll's games — dropping ones people had already voted
     // for, whose votes then silently stopped counting.
     const id = makeDraft();
-    const a = addGame(db, "g1", "A", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
     setNightGames(db, id, [a.id]);
     publishNight(db, id, "m1");
     expect(setNightGames(db, id, [])).toBe(false);
@@ -148,7 +148,7 @@ describe("nights repository", () => {
 
   it("reports whether the replacement applied", () => {
     const id = makeDraft();
-    const a = addGame(db, "g1", "A", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
     expect(setNightGames(db, id, [a.id])).toBe(true);
   });
 
@@ -156,8 +156,8 @@ describe("nights repository", () => {
     // "Suggest a game" adds to a live poll, so appending must stay allowed
     // even though wholesale replacement is now draft-only.
     const id = makeDraft();
-    const a = addGame(db, "g1", "A", 1, null, "u1");
-    const b = addGame(db, "g1", "B", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
+    const b = addGame(db, "g1", "B", null, "u1");
     setNightGames(db, id, [a.id]);
     publishNight(db, id, "m1");
     expect(addNightGame(db, id, b.id)).toBe(true);
@@ -166,14 +166,14 @@ describe("nights repository", () => {
 
   it("appends a suggested game to a draft", () => {
     const id = makeDraft();
-    const a = addGame(db, "g1", "A", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
     expect(addNightGame(db, id, a.id)).toBe(true);
     expect(getNightGameIds(db, id)).toEqual([a.id]);
   });
 
   it("ignores a game the night already carries", () => {
     const id = makeDraft();
-    const a = addGame(db, "g1", "A", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
     addNightGame(db, id, a.id);
     expect(addNightGame(db, id, a.id)).toBe(false);
     expect(getNightGameIds(db, id)).toEqual([a.id]);
@@ -181,10 +181,10 @@ describe("nights repository", () => {
 
   it("does not append to a night that is no longer taking responses", () => {
     const id = makeDraft();
-    const a = addGame(db, "g1", "A", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
     setNightGames(db, id, [a.id]);
     publishNight(db, id, "m1");
-    const b = addGame(db, "g1", "B", 1, null, "u1");
+    const b = addGame(db, "g1", "B", null, "u1");
     cancelNight(db, id);
     expect(addNightGame(db, id, b.id)).toBe(false);
     expect(getNightGameIds(db, id)).toEqual([a.id]);
@@ -214,8 +214,8 @@ describe("nights repository", () => {
 
   it("replaces votes wholesale", () => {
     const id = makeDraft();
-    const a = addGame(db, "g1", "A", 1, null, "u1");
-    const b = addGame(db, "g1", "B", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
+    const b = addGame(db, "g1", "B", null, "u1");
     setVotes(db, id, "u1", [a.id, b.id]);
     setVotes(db, id, "u1", [a.id]);
     expect([...getVotes(db, id).get("u1")!]).toEqual([a.id]);
@@ -223,7 +223,7 @@ describe("nights repository", () => {
 
   it("counts availability, votes, or attendance as having responded", () => {
     const id = makeDraft();
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     setAvailabilityForDay(db, id, "avail", [DAYS[0].startUtc], [DAYS[0].startUtc]);
     setVotes(db, id, "voter", [game.id]);
     setAttendance(db, id, "opted", "out");
@@ -238,7 +238,7 @@ describe("nights repository", () => {
 
   it("clears every trace of a user's response", () => {
     const id = makeDraft();
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     setAvailabilityForDay(db, id, "u1", [DAYS[0].startUtc], [DAYS[0].startUtc]);
     setVotes(db, id, "u1", [game.id]);
     clearUserResponses(db, id, "u1");
@@ -257,7 +257,7 @@ describe("nights repository", () => {
   it("stops returning a night once it is locked", () => {
     const id = makeDraft();
     publishNight(db, id, "m1");
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     lockNight(db, id, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1");
     expect(dueNights(db, DAYS[0].endUtc)).toEqual([]);
     expect(getNight(db, id)?.status).toBe("locked");
@@ -275,7 +275,7 @@ describe("nights repository", () => {
   it("never downgrades a locked night to failed", () => {
     const id = makeDraft();
     publishNight(db, id, "m1");
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     lockNight(db, id, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1");
     failNight(db, id, "lock_error");
     expect(getNight(db, id)?.status).toBe("locked");
@@ -289,7 +289,7 @@ describe("nights repository", () => {
     // — the canceller got "Cancelled." and the channel got a roster ping.
     const id = makeDraft();
     publishNight(db, id, "m1");
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     cancelNight(db, id);
     const locked = lockNight(db, id, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1");
     expect(locked).toBe(false);
@@ -300,7 +300,7 @@ describe("nights repository", () => {
   it("reports a successful lock so the caller knows it may announce", () => {
     const id = makeDraft();
     publishNight(db, id, "m1");
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     expect(lockNight(db, id, DAYS[0].startUtc, DAYS[0].endUtc, game.id, "e1")).toBe(true);
   });
 
@@ -314,7 +314,7 @@ describe("nights repository", () => {
   });
 
   it("finds the live open night, not an old finished one, to cancel", () => {
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     const finished = makeDraftIn("c9");
     publishNight(db, finished, "m-old");
     lockNight(db, finished, NOW - 10 * HOUR, NOW - 8 * HOUR, game.id, "e-old");
@@ -325,7 +325,7 @@ describe("nights repository", () => {
   });
 
   it("can cancel a locked night whose window has not ended yet", () => {
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     const id = makeDraftIn("c9");
     publishNight(db, id, "m1");
     lockNight(db, id, NOW - HOUR, NOW + 2 * HOUR, game.id, "e1");
@@ -334,7 +334,7 @@ describe("nights repository", () => {
   });
 
   it("has nothing to cancel once the only locked night has finished", () => {
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     const id = makeDraftIn("c9");
     publishNight(db, id, "m1");
     lockNight(db, id, NOW - 4 * HOUR, NOW - HOUR, game.id, "e1");
@@ -343,7 +343,7 @@ describe("nights repository", () => {
   });
 
   it("prefers the open night even when a locked one is newer", () => {
-    const game = addGame(db, "g1", "A", 1, null, "u1");
+    const game = addGame(db, "g1", "A", null, "u1");
     const open = makeDraftIn("c9");
     publishNight(db, open, "m-open");
     // Locked straight from draft: publishing it first would mean two open

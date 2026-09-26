@@ -33,11 +33,10 @@ function makeNight(): number {
 
 describe("games repository", () => {
   it("adds and reads back a game", () => {
-    const game = addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    const game = addGame(db, "g1", "Deep Rock", 4, "u1");
     expect(game).toEqual({
       id: game.id,
       name: "Deep Rock",
-      minPlayers: 2,
       maxPlayers: 4,
       link: null,
     });
@@ -49,7 +48,6 @@ describe("games repository", () => {
       db,
       "g1",
       "Deep Rock",
-      2,
       4,
       "u1",
       "https://store.steampowered.com/app/548430",
@@ -59,43 +57,49 @@ describe("games repository", () => {
   });
 
   it("stores an unlimited maximum as null", () => {
-    const game = addGame(db, "g1", "Valheim", 1, null, "u1");
+    const game = addGame(db, "g1", "Valheim", null, "u1");
     expect(game.maxPlayers).toBeNull();
   });
 
   it("keeps guilds separate", () => {
-    addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    addGame(db, "g1", "Deep Rock", 4, "u1");
     expect(listGames(db, "g2")).toEqual([]);
   });
 
   it("finds a game case-insensitively", () => {
-    addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    addGame(db, "g1", "Deep Rock", 4, "u1");
     expect(findGameByName(db, "g1", "  deep ROCK ")?.name).toBe("Deep Rock");
   });
 
   it("rejects a duplicate name in the same guild", () => {
-    addGame(db, "g1", "Deep Rock", 2, 4, "u1");
-    expect(() => addGame(db, "g1", "deep rock", 3, 5, "u2")).toThrow();
+    addGame(db, "g1", "Deep Rock", 4, "u1");
+    expect(() => addGame(db, "g1", "deep rock", 5, "u2")).toThrow();
   });
 
-  it("rejects a maximum below the minimum", () => {
-    expect(() => addGame(db, "g1", "Bad", 4, 2, "u1")).toThrow();
+  it("stores every game with a minimum of one", () => {
+    // The column outlived the feature (a CHECK constraint references it) but
+    // it stays in the schema, is always 1 and never read.
+    const game = addGame(db, "g1", "Deep Rock", 4, "u1");
+    const row = db.prepare("SELECT min_players FROM games WHERE id = ?").get(game.id) as {
+      min_players: number;
+    };
+    expect(row.min_players).toBe(1);
   });
 
-  it("rejects a minimum below one", () => {
-    expect(() => addGame(db, "g1", "Bad", 0, 4, "u1")).toThrow();
+  it("rejects a maximum below one", () => {
+    expect(() => addGame(db, "g1", "Bad", 0, "u1")).toThrow();
   });
 
   it("lists games alphabetically", () => {
-    addGame(db, "g1", "Zomboid", 1, null, "u1");
-    addGame(db, "g1", "Astroneer", 1, null, "u1");
+    addGame(db, "g1", "Zomboid", null, "u1");
+    addGame(db, "g1", "Astroneer", null, "u1");
     expect(listGames(db, "g1").map((g) => g.name)).toEqual(["Astroneer", "Zomboid"]);
   });
 
   it("fetches a set of games by id", () => {
-    const a = addGame(db, "g1", "A", 1, null, "u1");
-    const b = addGame(db, "g1", "B", 1, null, "u1");
-    addGame(db, "g1", "C", 1, null, "u1");
+    const a = addGame(db, "g1", "A", null, "u1");
+    const b = addGame(db, "g1", "B", null, "u1");
+    addGame(db, "g1", "C", null, "u1");
     expect(getGamesByIds(db, [a.id, b.id]).map((g) => g.name)).toEqual(["A", "B"]);
   });
 
@@ -104,19 +108,19 @@ describe("games repository", () => {
   });
 
   it("lets the creator remove their own game", () => {
-    addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    addGame(db, "g1", "Deep Rock", 4, "u1");
     expect(removeGame(db, "g1", "Deep Rock", "u1", false)).toBe("removed");
     expect(listGames(db, "g1")).toEqual([]);
   });
 
   it("refuses removal by another member without force", () => {
-    addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    addGame(db, "g1", "Deep Rock", 4, "u1");
     expect(removeGame(db, "g1", "Deep Rock", "u2", false)).toBe("forbidden");
     expect(listGames(db, "g1")).toHaveLength(1);
   });
 
   it("allows a moderator to force removal", () => {
-    addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    addGame(db, "g1", "Deep Rock", 4, "u1");
     expect(removeGame(db, "g1", "Deep Rock", "u2", true)).toBe("removed");
   });
 
@@ -125,7 +129,7 @@ describe("games repository", () => {
   });
 
   it("reports in_use rather than throwing for a game referenced by a night, and keeps it", () => {
-    const game = addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    const game = addGame(db, "g1", "Deep Rock", 4, "u1");
     const nightId = makeNight();
     setNightGames(db, nightId, [game.id]);
 
@@ -134,7 +138,7 @@ describe("games repository", () => {
   });
 
   it("reports in_use even with force, since the constraint is not a permission problem", () => {
-    const game = addGame(db, "g1", "Deep Rock", 2, 4, "u1");
+    const game = addGame(db, "g1", "Deep Rock", 4, "u1");
     const nightId = makeNight();
     setNightGames(db, nightId, [game.id]);
 

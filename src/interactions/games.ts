@@ -9,7 +9,7 @@ import {
 import type { AppContext } from "../context.js";
 import { addGame, findGameByName } from "../db/repos/games.js";
 import { GameLinkError, parseGameLink } from "../domain/gameLink.js";
-import { PlayerCountError, parsePlayerCounts } from "../domain/playerCounts.js";
+import { PlayerCountError, parseMaxPlayers, playerCountLabel } from "../domain/playerCounts.js";
 
 /** Values carried over from a Steam autocomplete pick, if there was one. */
 export interface GameAddPrefill {
@@ -24,9 +24,7 @@ export function buildGameAddModal(prefill: GameAddPrefill = {}): ModalBuilder {
     .setStyle(TextInputStyle.Short)
     .setMaxLength(80)
     .setRequired(true);
-  // Prefilled, not fixed: a Steam title is a starting point the host can edit,
-  // and min players — the field ranking actually depends on — is still asked
-  // for every time, because Steam does not publish it.
+  // Prefilled, not fixed: a Steam title is a starting point the host can edit.
   if (prefill.name) name.setValue(prefill.name.slice(0, 80));
 
   return new ModalBuilder()
@@ -34,14 +32,6 @@ export function buildGameAddModal(prefill: GameAddPrefill = {}): ModalBuilder {
     .setTitle("Add a game")
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(name),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("min")
-          .setLabel("Fewest players (optional)")
-          .setStyle(TextInputStyle.Short)
-          .setPlaceholder("Leave blank for 1")
-          .setRequired(false),
-      ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("max")
@@ -80,13 +70,9 @@ export async function handleGameAddModal(
   const name = interaction.fields.getTextInputValue("name").trim();
   const linkText = interaction.fields.getTextInputValue("link");
 
-  let min: number;
   let max: number | null;
   try {
-    ({ min, max } = parsePlayerCounts(
-      interaction.fields.getTextInputValue("min"),
-      interaction.fields.getTextInputValue("max"),
-    ));
+    max = parseMaxPlayers(interaction.fields.getTextInputValue("max"));
   } catch (error) {
     if (error instanceof PlayerCountError) {
       await interaction.reply({ content: error.message, flags: MessageFlags.Ephemeral });
@@ -113,11 +99,11 @@ export async function handleGameAddModal(
     return;
   }
 
-  const game = addGame(ctx.db, guildId, name, min, max, interaction.user.id, link);
+  const game = addGame(ctx.db, guildId, name, max, interaction.user.id, link);
   // Private: growing the library is housekeeping, not news for the channel.
   // Anyone who wants to see it runs /games list.
   await interaction.reply({
-    content: `Added **${game.name}** (${game.minPlayers}–${game.maxPlayers ?? "∞"} players).${link ? `\n${link}` : ""}`,
+    content: `Added **${game.name}** (${playerCountLabel(game.maxPlayers)}).${link ? `\n${link}` : ""}`,
     flags: MessageFlags.Ephemeral,
   });
 }

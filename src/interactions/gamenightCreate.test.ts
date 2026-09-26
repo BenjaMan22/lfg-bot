@@ -3,8 +3,8 @@ import { buildGameNightCreateModal } from "./gamenightCreate.js";
 import type { Game } from "../domain/scheduling.js";
 
 const library: Game[] = [
-  { id: 1, name: "Catan", minPlayers: 3, maxPlayers: 4 },
-  { id: 2, name: "Deep Rock", minPlayers: 2, maxPlayers: null },
+  { id: 1, name: "Catan", maxPlayers: 4 },
+  { id: 2, name: "Deep Rock", maxPlayers: null },
 ];
 
 /** The custom_id of each field, in the order the host sees them. */
@@ -36,7 +36,6 @@ describe("buildGameNightCreateModal", () => {
     const big: Game[] = Array.from({ length: 30 }, (_, i) => ({
       id: i + 1,
       name: `Game ${i + 1}`,
-      minPlayers: 1,
       maxPlayers: null,
     }));
     const json = buildGameNightCreateModal(big).toJSON() as {

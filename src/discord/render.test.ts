@@ -10,7 +10,7 @@ import { rankNight } from "../domain/scheduling.js";
 import type { Game, SchedulingResult } from "../domain/scheduling.js";
 
 const CHI = "America/Chicago";
-const lethal: Game = { id: 2, name: "Lethal Company", minPlayers: 2, maxPlayers: 4 };
+const lethal: Game = { id: 2, name: "Lethal Company", maxPlayers: 4 };
 const days = expandDays(["2026-08-28"], { startMinutes: 18 * 60, endMinutes: 23 * 60 }, CHI);
 
 /**
@@ -116,23 +116,6 @@ describe("renderPoll", () => {
     expect(text).toContain(`<t:${days[0].startUtc}:f>`);
   });
 
-  it("dates a near miss so it names the evening it is talking about", () => {
-    const hours = twoHours(days[0].startUtc);
-    const availability = new Map([["a", new Set(hours)]]);
-    const votes = new Map([["a", new Set([2])]]);
-    const result = rankNight({
-      days,
-      minSessionHours: 2,
-      games: [lethal],
-      availability,
-      votes,
-    });
-    const text = JSON.stringify(
-      renderPoll(failedView({ availability, votes, result })).embeds[0].toJSON(),
-    );
-    expect(text).toContain(`<t:${days[0].startUtc}:f>`);
-  });
-
   it("flags an oversubscribed roster", () => {
     const hours = twoHours(days[0].startUtc);
     const users = ["a", "b", "c", "d", "e"];
@@ -200,23 +183,6 @@ describe("renderPoll", () => {
     expect(JSON.stringify(rendered.embeds[0].toJSON())).toMatch(/locked/i);
   });
 
-  it("explains the near misses when nothing was viable", () => {
-    const hours = twoHours(days[0].startUtc);
-    const availability = new Map([["a", new Set(hours)]]);
-    const votes = new Map([["a", new Set([2])]]);
-    const result = rankNight({
-      days,
-      minSessionHours: 2,
-      games: [lethal],
-      availability,
-      votes,
-    });
-    const text = JSON.stringify(
-      renderPoll(failedView({ availability, votes, result })).embeds[0].toJSON(),
-    );
-    expect(text).toMatch(/needs 2/);
-  });
-
   it("plainly says nobody answered when a night fails with zero responses", () => {
     // Previously this fell through to the near-miss placeholder text
     // ("Closest misses:" followed by "Nothing yet — no responses yet."),
@@ -225,6 +191,20 @@ describe("renderPoll", () => {
     const text = JSON.stringify(renderPoll(failedView()).embeds[0].toJSON());
     expect(text).toMatch(/nobody responded/i);
     expect(text).not.toMatch(/nothing yet/i);
+  });
+
+  it("explains a failed night that did get answers", () => {
+    const availability = new Map([["a", new Set<number>()]]);
+    const text = JSON.stringify(renderPoll(failedView({ availability })).embeds[0].toJSON());
+    expect(text).toMatch(/nobody who answered was free for 2 hours in a row/i);
+    expect(text).not.toMatch(/closest misses/i);
+  });
+
+  it("does not claim there are no responses on an open poll that has some", () => {
+    const availability = new Map([["a", new Set<number>()]]);
+    const text = JSON.stringify(renderPoll(openView({ availability })).embeds[0].toJSON());
+    expect(text).toMatch(/nobody is free for 2 hours in a row with a game picked/i);
+    expect(text).not.toMatch(/no responses yet/i);
   });
 
   it("says the lock failed, not that nothing was viable, after a lock error", () => {
@@ -240,30 +220,3 @@ describe("renderPoll", () => {
   });
 });
 
-describe("near-miss tense", () => {
-  /** One person free for the whole window, voting for a game that needs two. */
-  const availability = new Map([["u1", new Set(days.flatMap((d) => {
-    const out: number[] = [];
-    for (let t = d.startUtc; t < d.endUtc; t += 1800) out.push(t);
-    return out;
-  }))]]);
-  const votes = new Map([["u1", new Set([lethal.id])]]);
-
-  function nearMissText(view: PollView): string {
-    const embed = renderPoll(view).embeds[0].toJSON();
-    return (embed.fields ?? []).map((f) => f.value).join("\n");
-  }
-
-  it("speaks in the present tense while the poll is still open", () => {
-    // "had 1" reads like a post-mortem on a poll that is still running and
-    // can still change — the count is current, not historical.
-    const text = nearMissText(openView({ availability, votes }));
-    expect(text).toContain("has 1; needs 2");
-    expect(text).not.toContain("had 1");
-  });
-
-  it("speaks in the past tense once the night has failed", () => {
-    const text = nearMissText(failedView({ availability, votes }));
-    expect(text).toContain("had 1; needs 2");
-  });
-});

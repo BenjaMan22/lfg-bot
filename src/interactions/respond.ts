@@ -30,7 +30,7 @@ import {
   slotsIn,
 } from "../domain/timeblocks.js";
 import { GameLinkError, parseGameLink } from "../domain/gameLink.js";
-import { PlayerCountError, parsePlayerCounts } from "../domain/playerCounts.js";
+import { PlayerCountError, parseMaxPlayers, playerCountLabel } from "../domain/playerCounts.js";
 import { queueRender } from "../discord/updateQueue.js";
 import { requireTimezone } from "../discord/timezonePicker.js";
 import { performCancel } from "../nights/cancel.js";
@@ -165,7 +165,7 @@ export async function handleVotesButton(
           .addOptions(
             games.map((g) => ({
               label: g.name.slice(0, 100),
-              description: `${g.minPlayers}–${g.maxPlayers ?? "∞"} players`,
+              description: playerCountLabel(g.maxPlayers),
               value: String(g.id),
               default: chosen.has(g.id),
             })),
@@ -209,14 +209,6 @@ export async function handleSuggestButton(
         ),
         new ActionRowBuilder<TextInputBuilder>().addComponents(
           new TextInputBuilder()
-            .setCustomId("min")
-            .setLabel("Fewest players (optional)")
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder("Leave blank for 1")
-            .setRequired(false),
-        ),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
             .setCustomId("max")
             .setLabel("Most players (optional)")
             .setStyle(TextInputStyle.Short)
@@ -248,13 +240,9 @@ export async function handleSuggestModal(
   const name = interaction.fields.getTextInputValue("name").trim();
   const linkText = interaction.fields.getTextInputValue("link");
 
-  let min: number;
   let max: number | null;
   try {
-    ({ min, max } = parsePlayerCounts(
-      interaction.fields.getTextInputValue("min"),
-      interaction.fields.getTextInputValue("max"),
-    ));
+    max = parseMaxPlayers(interaction.fields.getTextInputValue("max"));
   } catch (error) {
     if (error instanceof PlayerCountError) {
       await interaction.reply({ content: error.message, flags: MessageFlags.Ephemeral });
@@ -290,13 +278,13 @@ export async function handleSuggestModal(
   }
 
   const game =
-    existing ?? addGame(ctx.db, night.guildId, name, min, max, interaction.user.id, link);
+    existing ?? addGame(ctx.db, night.guildId, name, max, interaction.user.id, link);
   if (!alreadyOnNight) addNightGame(ctx.db, nightId, game.id);
 
   const votes = getVotes(ctx.db, nightId).get(interaction.user.id) ?? new Set<number>();
   setVotes(ctx.db, nightId, interaction.user.id, [...new Set([...votes, game.id])]);
 
-  const confirmation = `Added **${game.name}** (${game.minPlayers}–${game.maxPlayers ?? "∞"}) and voted you for it.`;
+  const confirmation = `Added **${game.name}** (${playerCountLabel(game.maxPlayers)}) and voted you for it.`;
 
   // The setup select's options are built from the library at the moment
   // /gamenight create ran and never rebuilt on their own — so a game added

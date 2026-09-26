@@ -7,6 +7,7 @@ import {
 } from "discord.js";
 import type { AppContext } from "../context.js";
 import { listGames, removeGame } from "../db/repos/games.js";
+import { playerCountLabel } from "../domain/playerCounts.js";
 import { buildGameAddModal } from "../interactions/games.js";
 import {
   decodeGamePick,
@@ -86,7 +87,7 @@ export async function execute(
       return;
     }
     const lines = games.map((g) => {
-      const base = `• **${g.name}** — ${g.minPlayers}–${g.maxPlayers ?? "∞"} players`;
+      const base = `• **${g.name}** — ${playerCountLabel(g.maxPlayers)}`;
       return g.link ? `${base} — ${g.link}` : base;
     });
     // Suppressed so a library full of linked games doesn't unfurl into a
