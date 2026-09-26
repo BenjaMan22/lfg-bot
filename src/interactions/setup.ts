@@ -11,7 +11,7 @@ import {
   type StringSelectMenuInteraction,
 } from "discord.js";
 import type { AppContext } from "../context.js";
-import { lockIsStillAhead } from "../domain/pickers.js";
+import { lockIsStillAhead, SELECT_OPTION_LIMIT } from "../domain/pickers.js";
 import { playerCountLabel } from "../domain/playerCounts.js";
 import type { Game } from "../domain/scheduling.js";
 import {
@@ -36,9 +36,6 @@ export function messageLink(
     ? `https://discord.com/channels/${guildId}/${channelId}/${messageId}`
     : "(its message is missing)";
 }
-
-/** Discord's hard limit on the number of options in one select menu. */
-const SELECT_OPTION_LIMIT = 25;
 
 /**
  * A note for the setup message when the library outgrows the select. The

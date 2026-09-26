@@ -31,14 +31,13 @@ import {
 } from "../domain/timeblocks.js";
 import { GameLinkError, parseGameLink } from "../domain/gameLink.js";
 import { PlayerCountError, parseMaxPlayers, playerCountLabel } from "../domain/playerCounts.js";
+import { SELECT_OPTION_LIMIT } from "../domain/pickers.js";
 import { queueRender } from "../discord/updateQueue.js";
 import { requireTimezone } from "../discord/timezonePicker.js";
 import { performCancel } from "../nights/cancel.js";
 
 const EXPIRED = "That poll is closed. Nothing to change.";
 
-/** Discord's select-menu limit: games on a night, and slots in a day. */
-const SELECT_OPTION_LIMIT = 25;
 const NIGHT_GAME_LIMIT = 25;
 
 function openNightOrNull(ctx: AppContext, nightId: number) {
