@@ -242,7 +242,7 @@ export function renderPoll(view: PollView): {
 
   embed
     .setColor(0x5865f2)
-    .setDescription(`Deadline <t:${view.deadlineUtc}:R>`)
+    .setDescription(`Picks the night <t:${view.deadlineUtc}:R>`)
     .addFields(
       { name: "Availability", value: fitField(grid(view)) },
       { name: "Games", value: fitField(gameLine(view)) },

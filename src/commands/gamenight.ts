@@ -3,6 +3,7 @@ import {
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
 } from "discord.js";
+import { DateTime } from "luxon";
 import type { AppContext } from "../context.js";
 import { getCancellableNightForChannel, getOpenNightForChannel } from "../db/repos/nights.js";
 import { listGames } from "../db/repos/games.js";
@@ -84,5 +85,5 @@ export async function execute(
     return;
   }
 
-  await interaction.showModal(buildGameNightCreateModal(library));
+  await interaction.showModal(buildGameNightCreateModal(library, tz, DateTime.now()));
 }

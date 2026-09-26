@@ -218,5 +218,10 @@ describe("renderPoll", () => {
   it("shows no buttons at all on a failed night", () => {
     expect(renderPoll(failedView()).components).toEqual([]);
   });
+
+  it("says when the bot will pick the night", () => {
+    const text = JSON.stringify(renderPoll(openView()).embeds[0].toJSON());
+    expect(text).toContain("Picks the night <t:1800000000:R>");
+  });
 });
 
