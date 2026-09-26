@@ -222,13 +222,13 @@ export function renderPoll(view: PollView): {
       // An infrastructure give-up, not a scheduling outcome. Saying "no
       // viable night" here would be a lie about the players' answers.
       embed.setDescription(
-        "**I could not lock this night in.** Something kept going wrong talking to Discord at the deadline, and I stopped retrying. Nothing was scheduled — start a fresh one with `/gamenight create`.",
+        "**I could not lock this night in.** Something kept going wrong talking to Discord when it was time to pick the night, and I stopped retrying. Nothing was scheduled — start a fresh one with `/gamenight create`.",
       );
     } else if (view.responderIds.size === 0) {
       // Distinct from "we computed some near misses and none worked" — here
       // there is nothing to compute from at all, so say that plainly rather
       // than falling through to the near-miss placeholder.
-      embed.setDescription("**No viable night.** Nobody responded before the deadline.");
+      embed.setDescription("**No viable night.** Nobody responded before the night was picked.");
     } else {
       // With no per-game minimum, one person is enough — so the only way to
       // fail with answers in hand is that nobody had both a full session
