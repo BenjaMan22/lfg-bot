@@ -23,7 +23,6 @@ interface BaseOverrides {
   availability?: Map<string, Set<number>>;
   votes?: Map<string, Set<number>>;
   games?: Game[];
-  pendingIds?: string[];
   result?: SchedulingResult;
 }
 
@@ -42,7 +41,6 @@ function baseFields(over: BaseOverrides = {}) {
     availability,
     votes,
     responderIds: new Set(availability.keys()),
-    pendingIds: over.pendingIds ?? [],
     result: over.result ?? rankNight({ days, minSessionHours: 2, games, availability, votes }),
   };
 }
@@ -127,22 +125,18 @@ describe("renderPoll", () => {
     expect(text).toMatch(/plays 4/);
   });
 
-  it("lists who has not responded", () => {
-    const text = JSON.stringify(
-      renderPoll(openView({ pendingIds: ["taylor"] })).embeds[0].toJSON(),
-    );
-    expect(text).toContain("<@taylor>");
+  it("shows how many have responded, without naming who hasn't", () => {
+    const hours = twoHours(days[0].startUtc);
+    const availability = new Map(["a", "b", "c"].map((u) => [u, new Set(hours)]));
+    const embed = renderPoll(openView({ availability })).embeds[0].toJSON();
+    expect(embed.description).toBe("Picks the night <t:1800000000:R> · 3 responded");
+    expect(embed.fields?.some((f) => f.name.startsWith("Responded"))).toBe(false);
+    expect(JSON.stringify(embed)).not.toContain("No response");
   });
 
-  it("still renders when far more people have not responded than fit in a field", () => {
-    // discord.js validates field values at addFields time and THROWS past
-    // 1024 characters, so an uncapped mention list crashed Post it outright
-    // in any channel with ~47 or more members.
-    const pendingIds = Array.from({ length: 200 }, (_, i) => `98765432109876${1000 + i}`);
-    const embed = renderPoll(openView({ pendingIds })).embeds[0].toJSON();
-    const responded = embed.fields?.find((f) => f.name.startsWith("Responded"));
-    expect(responded?.value.length).toBeLessThanOrEqual(1024);
-    expect(responded?.value).toContain("and 180 others");
+  it("says nobody has responded yet on a fresh poll", () => {
+    const embed = renderPoll(openView()).embeds[0].toJSON();
+    expect(embed.description).toBe("Picks the night <t:1800000000:R> · no responses yet");
   });
 
   it("caps a suggestion roster instead of overflowing the field", () => {

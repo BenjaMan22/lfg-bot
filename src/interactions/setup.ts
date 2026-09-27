@@ -159,12 +159,12 @@ export async function handlePostButton(
     return;
   }
 
-  // Everything past this point does Discord round trips — a channel fetch, a
-  // guild fetch and a FULL member fetch inside buildPollView, then the send
-  // itself — which on a cold cache runs past Discord's 3-second interaction
-  // window. Without deferring, the poll posts and publishNight commits, and
-  // only then does update() throw Unknown Interaction, so the host sees
-  // "This interaction failed" for an operation that entirely succeeded.
+  // Everything past this point does Discord round trips — a channel fetch,
+  // then the send itself — which on a cold cache can run past Discord's
+  // 3-second interaction window. Without deferring, the poll posts and
+  // publishNight commits, and only then does update() throw Unknown
+  // Interaction, so the host sees "This interaction failed" for an operation
+  // that entirely succeeded.
   // The guards above are synchronous database reads, so they answer in time
   // on their own.
   await interaction.deferUpdate();
@@ -200,7 +200,7 @@ export async function handlePostButton(
   const channel = await interaction.client.channels.fetch(night.channelId);
   if (!channel?.isTextBased() || !("send" in channel)) throw new Error("Channel is not sendable");
 
-  const view = await buildPollView(interaction.client, ctx.db, nightId);
+  const view = buildPollView(ctx.db, nightId);
   if (!view) throw new Error(`Night ${nightId} vanished`);
   const message = await channel.send(renderPoll(view));
 

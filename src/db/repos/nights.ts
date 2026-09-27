@@ -460,9 +460,8 @@ export function deleteStaleDrafts(db: DatabaseSync, olderThanUtc: number): void 
  * Commit a night's decision. Scoped to 'open' — the mirror of `failNight`'s
  * guard below, and for the same reason from the other direction.
  *
- * `lockOne` does two Discord round trips between reading a due night and
- * calling this: building the poll view (which fetches the full member list)
- * and creating the Scheduled Event. A `/gamenight cancel` landing in that
+ * `lockOne` creates the Scheduled Event — a Discord round trip — between
+ * reading a due night and calling this. A `/gamenight cancel` landing in that
  * window commits 'cancelled' and answers the canceller — so without this
  * guard the sweep flips the row straight back to 'locked', and the channel
  * gets a roster ping for a night its host already called off. Worse, cancel's

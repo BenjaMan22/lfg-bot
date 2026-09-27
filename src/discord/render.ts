@@ -31,7 +31,6 @@ interface PollViewBase {
   availability: Map<string, Set<number>>;
   votes: Map<string, Set<number>>;
   responderIds: Set<string>;
-  pendingIds: string[];
   result: SchedulingResult;
 }
 
@@ -90,9 +89,9 @@ const SUGGESTION_MENTION_CAP = 8;
 /**
  * A mention is ~21 characters, so an unbounded roster is a crash waiting for
  * a big enough channel: discord.js validates field values at `addFields` time
- * and throws SYNCHRONOUSLY past FIELD_LIMIT. At **Post it** every member but
- * the host is a non-responder, so "channel visible to 47+ people" was enough
- * to stop the poll ever being posted.
+ * and throws SYNCHRONOUSLY past FIELD_LIMIT. When the poll still listed
+ * non-responders, "channel visible to 47+ people" was enough to stop it ever
+ * being posted; rosters are capped for the same reason.
  */
 function mentionList(ids: string[], cap: number): string {
   const shown = ids.slice(0, cap).map(mention).join(" ");
@@ -240,20 +239,17 @@ export function renderPoll(view: PollView): {
     return { embeds: [embed], components: [] };
   }
 
+  // A count, not a list of who hasn't answered: in a big server that list
+  // ran to dozens of mentions and dwarfed the poll itself.
+  const responded =
+    view.responderIds.size === 0 ? "no responses yet" : `${view.responderIds.size} responded`;
   embed
     .setColor(0x5865f2)
-    .setDescription(`Picks the night <t:${view.deadlineUtc}:R>`)
+    .setDescription(`Picks the night <t:${view.deadlineUtc}:R> · ${responded}`)
     .addFields(
       { name: "Availability", value: fitField(grid(view)) },
       { name: "Games", value: fitField(gameLine(view)) },
       { name: "Best right now", value: fitField(suggestionLines(view)) },
-      {
-        name: `Responded: ${view.responderIds.size}`,
-        value:
-          view.pendingIds.length > 0
-            ? fitField(`No response: ${mentionList(view.pendingIds, MENTION_CAP)}`)
-            : "Everyone has answered.",
-      },
     );
 
   return {

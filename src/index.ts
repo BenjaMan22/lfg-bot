@@ -28,7 +28,6 @@ const ctx: AppContext = { db, config };
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
     GatewayIntentBits.GuildScheduledEvents,
   ],
   // User-supplied text (game names, poll titles) is echoed into messages.

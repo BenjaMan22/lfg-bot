@@ -47,7 +47,7 @@ export function shouldGiveUp(
 }
 
 async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promise<void> {
-  const view = await buildPollView(client, db, night.id);
+  const view = buildPollView(db, night.id);
   if (!view) return;
   const winner = view.result.top[0];
 
@@ -70,7 +70,7 @@ async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promi
 
   if (!locked) {
     // The night stopped being open while we were talking to Discord — in
-    // practice a /gamenight cancel between buildPollView and here. The
+    // practice a /gamenight cancel during createScheduledEvent. The
     // canceller has already been told it is off, so the decision is void:
     // do not seed a roster, do not ping anyone. Retract the Scheduled Event
     // we just created, since cancel read event_id while it was still null
@@ -136,8 +136,8 @@ export async function processDueNights(
       // Everything reaching here is an INFRASTRUCTURE error. "Nothing is
       // viable" is a domain result from rankNight and lockOne handles it
       // above without throwing, so this catch never sees it. The reachable
-      // trigger is pendingMemberIds -> guild.members.fetch(), a gateway op
-      // that rejects on GuildMembersTimeout or a reconnect. One hiccup at a
+      // triggers are the Discord calls — creating the Scheduled Event,
+      // editing the poll message — which fail on outages and rate limits. One hiccup at a
       // deadline must not discard a correctly-computed decision, so leave the
       // night 'open' and let the next 30-second sweep retry it.
       const giveUp = shouldGiveUp(night.deadlineUtc, processStartUtc, nowUtc, LOCK_RETRY_GRACE_SECONDS);

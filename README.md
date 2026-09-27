@@ -42,9 +42,10 @@ Do this once, before the bot can run against real Discord.
      (not in chat, not in a screenshot, not committed to git). If it ever
      leaks, come back here and reset it again; the old one stops working
      immediately.
-   - Under **Privileged Gateway Intents**, turn **Server Members Intent
-     ON**. The bot needs this to list who in the server hasn't responded
-     to a poll yet — there's no other way to enumerate members.
+   - Under **Privileged Gateway Intents**, leave **Server Members Intent
+     OFF**. The poll shows how many people have responded, not who
+     hasn't, so the bot never needs the member list. (If you turned it on
+     for an older version, it does no harm — switch it off whenever.)
    - Leave **Message Content Intent OFF**. The bot never reads message
      text (everything is buttons, dropdowns, and modals), and this is the
      intent Discord scrutinizes most — it's the one that forces a bot into

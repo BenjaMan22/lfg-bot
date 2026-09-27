@@ -17,31 +17,12 @@ import { log } from "../log.js";
 const DEBOUNCE_MS = 1500;
 const pending = new Map<number, NodeJS.Timeout>();
 
-async function pendingMemberIds(
-  client: Client,
-  guildId: string,
-  channelId: string,
-  responders: Set<string>,
-): Promise<string[]> {
-  const guild = await client.guilds.fetch(guildId);
-  const channel = await guild.channels.fetch(channelId);
-  if (!channel) return [];
-  const members = await guild.members.fetch();
-  return members
-    .filter(
-      (m) =>
-        !m.user.bot &&
-        !responders.has(m.id) &&
-        channel.permissionsFor(m)?.has("ViewChannel") === true,
-    )
-    .map((m) => m.id);
-}
-
-export async function buildPollView(
-  client: Client,
-  db: DatabaseSync,
-  nightId: number,
-): Promise<PollView | null> {
+/**
+ * Database reads only. It used to fetch the whole member list to name who
+ * had not answered; the poll now shows a count instead, so building a view
+ * never talks to Discord.
+ */
+export function buildPollView(db: DatabaseSync, nightId: number): PollView | null {
   const night = getNight(db, nightId);
   if (!night) return null;
 
@@ -58,9 +39,8 @@ export async function buildPollView(
     votes,
   });
 
-  // Build (and validate) any locked details before the Discord round trip
-  // below — fail loudly here rather than spend a member fetch on a view we
-  // are about to discard, or render a half-built locked view. A missing game
+  // Validate any locked details up front — fail loudly rather than render a
+  // half-built locked view. A missing game
   // is currently unreachable (FK protects the reference, lockNight is the
   // only writer), but that is accidental, not designed; do not trust it.
   let locked: LockedDetails | undefined;
@@ -83,9 +63,6 @@ export async function buildPollView(
     locked = { startUtc: night.lockedStartUtc, endUtc: night.lockedEndUtc, game, roster };
   }
 
-  // One member fetch per build, shared by whichever branch returns below.
-  const pendingIds = await pendingMemberIds(client, night.guildId, night.channelId, responderIds);
-
   const base = {
     nightId,
     title: night.title,
@@ -96,7 +73,6 @@ export async function buildPollView(
     availability,
     votes,
     responderIds,
-    pendingIds,
     result,
   };
 
@@ -123,7 +99,7 @@ export async function renderNightNow(
 ): Promise<void> {
   const night = getNight(db, nightId);
   if (!night?.messageId) return;
-  const view = await buildPollView(client, db, nightId);
+  const view = buildPollView(db, nightId);
   if (!view) return;
 
   const channel = await client.channels.fetch(night.channelId);
