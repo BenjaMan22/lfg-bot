@@ -32,6 +32,10 @@ export function openDatabase(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec(readFileSync(schemaPath, "utf8"));
   applyAddedColumns(db);
+  // Older versions allowed one open night per channel, enforced by this
+  // index. A channel can now run several, each cancelled by its own trash
+  // can, so an existing database has to lose it.
+  db.exec("DROP INDEX IF EXISTS nights_one_open_per_channel");
   return db;
 }
 

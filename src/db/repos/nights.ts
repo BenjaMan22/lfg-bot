@@ -159,51 +159,6 @@ export function getNight(db: DatabaseSync, id: number): NightRow | null {
   return row ? toNight(row) : null;
 }
 
-export function getOpenNightForChannel(
-  db: DatabaseSync,
-  channelId: string,
-): NightRow | null {
-  const row = db
-    .prepare(`${NIGHT_COLUMNS} WHERE channel_id = ? AND status = 'open' LIMIT 1`)
-    .get(channelId) as NightDbRow | undefined;
-  return row ? toNight(row) : null;
-}
-
-/**
- * Like `getOpenNightForChannel`, but also matches a night that has already
- * locked and has not yet finished. `/gamenight cancel` needs this: a locked
- * night still has a live Scheduled Event and roster to retract, and
- * `getOpenNightForChannel` means exactly "open" for its other callers — this
- * is a separate read, not a loosening of that one.
- *
- * Ordering is load-bearing, not incidental. Locked nights are terminal and
- * accumulate in a channel forever, so an unordered `status IN ('open',
- * 'locked')` lets SQLite walk the nights_due(status, ...) index and hand back
- * the oldest *locked* row — cancelling last week's night instead of the live
- * one. Open always wins; among locked, the newest; and a locked night whose
- * window has already ended is not cancellable at all, because there is
- * nothing left to retract.
- *
- * `nowUtc` is epoch seconds, taken as an argument rather than read from the
- * clock here so the query stays testable.
- */
-export function getCancellableNightForChannel(
-  db: DatabaseSync,
-  channelId: string,
-  nowUtc: number,
-): NightRow | null {
-  const row = db
-    .prepare(
-      `${NIGHT_COLUMNS}
-       WHERE channel_id = ?
-         AND (status = 'open' OR (status = 'locked' AND locked_end_utc > ?))
-       ORDER BY CASE status WHEN 'open' THEN 0 ELSE 1 END, id DESC
-       LIMIT 1`,
-    )
-    .get(channelId, nowUtc) as NightDbRow | undefined;
-  return row ? toNight(row) : null;
-}
-
 interface NightDayDbRow {
   day_index: number;
   window_start_utc: number;
@@ -477,7 +432,7 @@ export function deleteStaleDrafts(db: DatabaseSync, olderThanUtc: number): void 
  * guard below, and for the same reason from the other direction.
  *
  * `lockOne` creates the Scheduled Event — a Discord round trip — between
- * reading a due night and calling this. A `/gamenight cancel` landing in that
+ * reading a due night and calling this. A cancel landing in that
  * window commits 'cancelled' and answers the canceller — so without this
  * guard the sweep flips the row straight back to 'locked', and the channel
  * gets a roster ping for a night its host already called off. Worse, cancel's

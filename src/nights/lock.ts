@@ -70,7 +70,7 @@ async function lockOne(client: Client, db: DatabaseSync, night: NightRow): Promi
 
   if (!locked) {
     // The night stopped being open while we were talking to Discord — in
-    // practice a /gamenight cancel during createScheduledEvent. The
+    // practice a cancel during createScheduledEvent. The
     // canceller has already been told it is off, so the decision is void:
     // do not seed a roster, do not ping anyone. Retract the Scheduled Event
     // we just created, since cancel read event_id while it was still null

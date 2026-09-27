@@ -18,7 +18,6 @@ import { listGames } from "../db/repos/games.js";
 import {
   getNight,
   getNightGameIds,
-  getOpenNightForChannel,
   publishNight,
   setNightGames,
   setAllowSuggestions,
@@ -28,16 +27,6 @@ import { buildPollView } from "../discord/updateQueue.js";
 import { renderPoll } from "../discord/render.js";
 import { log } from "../log.js";
 
-/** A jump link to a poll, or a plain description when we never stored one. */
-export function messageLink(
-  guildId: string,
-  channelId: string,
-  messageId: string | null,
-): string {
-  return messageId
-    ? `https://discord.com/channels/${guildId}/${channelId}/${messageId}`
-    : "(its message is missing)";
-}
 
 /**
  * A note for the setup message when the library outgrows the select. The
@@ -205,21 +194,7 @@ export async function handlePostButton(
   // on their own.
   await interaction.deferUpdate();
 
-  // The create-time check is minutes old by now, and drafts deliberately do
-  // not count against it — so a host who ran /gamenight create twice is
-  // holding two live setups and could post both. Two polls in one channel
-  // means two sweeps, two Scheduled Events, two roster pings, and a cancel
-  // that can only ever reach one of them.
-  const alreadyOpen = getOpenNightForChannel(ctx.db, night.channelId);
-  if (alreadyOpen) {
-    await interaction.editReply({
-      content: `This channel already has a game night running: ${messageLink(night.guildId, night.channelId, alreadyOpen.messageId)}\nCancel that one with \`/gamenight cancel\` before posting another.`,
-      components: [],
-    });
-    return;
-  }
-
-  // The create-time check is minutes old by now too: a draft can sit on the
+  // The create-time check is minutes old by now: a draft can sit on the
   // setup screen for up to an hour, so its lock time may have already passed.
   // Posting it anyway would lock at the next sweep with nobody having had a
   // chance to answer.
@@ -247,17 +222,17 @@ export async function handlePostButton(
   try {
     published = publishNight(ctx.db, nightId, message.id);
   } catch (error) {
-    // nights_one_open_per_channel fired: another draft was published between
-    // the check above and here.
     log.error("Could not publish night", { nightId, error });
     published = false;
   }
   if (!published) {
+    // In practice a double click on Post it: the first click published the
+    // draft while this one was sending, so this copy is the duplicate.
     await message.delete().catch((error: unknown) =>
       log.error("Could not remove an unpublished poll", { nightId, error }),
     );
     await interaction.editReply({
-      content: "Someone posted a game night in this channel first, so I took that one back down. Cancel theirs, or use this channel's poll.",
+      content: "This game night was already posted, so I took the duplicate back down.",
       components: [],
     });
     return;

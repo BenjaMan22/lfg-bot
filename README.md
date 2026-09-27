@@ -92,7 +92,7 @@ npm run dev      # starts the bot
 ### `/gamenight create`
 
 No options. Opens a form for a new game night in the channel it's run in.
-Only one open night is allowed per channel at a time.
+A channel can run several game nights at once.
 
 | Field      | Required | How you fill it                                                        |
 | ---------- | -------- | ---------------------------------------------------------------------- |
@@ -113,11 +113,12 @@ channel once you click **Post it**. Players can add games to the poll with
 **Suggest a game** unless you click **✓ Suggestions on** to switch it to
 **✕ Suggestions off** before posting.
 
-### `/gamenight cancel`
+### Cancelling a game night
 
-Cancels the channel's open game night. Usable by the host or by anyone
-with the Manage Events permission. Deletes the Scheduled Event if one had
-already been created, and marks the poll message cancelled.
+There's no command for it: click the 🗑️ button on that night's poll.
+Usable by the host or by anyone with the Manage Events permission. Deletes
+the Scheduled Event if one had already been created, and marks the poll
+message cancelled.
 
 ### `/gamenight ping`
 

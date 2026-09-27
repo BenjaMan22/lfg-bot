@@ -10,10 +10,9 @@ import { renderNightNow } from "../discord/updateQueue.js";
 import { log } from "../log.js";
 
 /**
- * Shared by `/gamenight cancel` and the poll's trash-can button, so the two
- * paths to the same action can't drift apart. `interaction` is typed as
- * `RepliableInteraction` — the same interface `requireTimezone` uses — since
- * both a slash command and a button interaction satisfy it identically.
+ * Cancels a night from the poll's trash-can button. Kept apart from the
+ * button handler, and typed as `RepliableInteraction`, so any future way to
+ * cancel reuses the same steps rather than drifting from them.
  */
 export async function performCancel(
   interaction: RepliableInteraction,

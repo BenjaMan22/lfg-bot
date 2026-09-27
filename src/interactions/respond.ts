@@ -77,7 +77,7 @@ export async function handleAvailabilityButton(
   if (days.some((day) => slotsIn(day).length > SELECT_OPTION_LIMIT)) {
     await interaction.reply({
       content:
-        "This poll's window is too long to answer now that availability moves in half hours. Cancel it with `/gamenight cancel` and start a new one — a window of 12 hours or less.",
+        "This poll's window is too long to answer now that availability moves in half hours. Cancel it with its 🗑️ button and start a new one — a window of 12 hours or less.",
       flags: MessageFlags.Ephemeral,
     });
     return;
@@ -374,9 +374,9 @@ export async function handleInButton(
 }
 
 /**
- * Unlike `/gamenight cancel`, which has to look up "the channel's live
- * night" because the command carries no argument, this button already knows
- * exactly which night it's for — it's the ID baked into its own customId.
+ * The only way to cancel a game night. It knows exactly which night it's
+ * for — the ID baked into its own customId — which is what lets one channel
+ * run several at once.
  */
 export async function handleTrashButton(
   interaction: ButtonInteraction,
