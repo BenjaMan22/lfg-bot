@@ -189,15 +189,31 @@ function whoIsIn(view: PollView): string {
   return text;
 }
 
+/**
+ * A game's name, as a masked link when it has one, so voters can look up a
+ * game they don't know. Brackets in the name are escaped (they would close
+ * the link text early) and a `)` in the URL is encoded (it would end it).
+ */
+function gameName(game: Game): string {
+  if (!game.link) return game.name;
+  const text = game.name.replace(/[[\]]/g, (c) => `\\${c}`);
+  return `[${text}](${game.link.replace(/\)/g, "%29")})`;
+}
+
 function gameLine(view: PollView): string {
   if (view.games.length === 0) return "_No games yet._";
-  return view.games
-    .map((game) => {
-      let count = 0;
-      for (const chosen of view.votes.values()) if (chosen.has(game.id)) count += 1;
-      return `${game.name} (${count})`;
-    })
-    .join(" · ");
+  const line = (name: (game: Game) => string) =>
+    view.games
+      .map((game) => {
+        let count = 0;
+        for (const chosen of view.votes.values()) if (chosen.has(game.id)) count += 1;
+        return `${name(game)} (${count})`;
+      })
+      .join(" · ");
+  // A link costs ~60 characters, so a long shortlist of linked games can
+  // pass the field limit. Every name plain beats a line cut off mid-link.
+  const linked = line(gameName);
+  return linked.length <= FIELD_LIMIT ? linked : line((game) => game.name);
 }
 
 function suggestionLines(view: PollView): string {
@@ -215,7 +231,7 @@ function suggestionLines(view: PollView): string {
         ? ` — ${s.roster.length} in, plays ${s.game.maxPlayers}, split lobbies?`
         : "";
       return [
-        `**${index + 1}. ${dayAndClock(s.startUtc)}–${clock(s.endUtc)} · ${s.game.name}** · ${s.roster.length} players${flag}`,
+        `**${index + 1}. ${dayAndClock(s.startUtc)}–${clock(s.endUtc)} · ${gameName(s.game)}** · ${s.roster.length} players${flag}`,
         mentionList(s.roster, SUGGESTION_MENTION_CAP),
       ].join("\n");
     })
@@ -234,7 +250,7 @@ export function renderPoll(view: PollView): {
     embed
       .setColor(0x2ecc71)
       .setDescription(
-        `**Locked in.** ${dayAndClock(view.locked.startUtc)}–${clock(view.locked.endUtc)} · **${view.locked.game.name}**`,
+        `**Locked in.** ${dayAndClock(view.locked.startUtc)}–${clock(view.locked.endUtc)} · **${gameName(view.locked.game)}**`,
       )
       .addFields({
         name: `Playing (${view.locked.roster.length})`,

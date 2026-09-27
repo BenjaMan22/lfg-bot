@@ -279,3 +279,53 @@ describe("renderPoll", () => {
   });
 });
 
+
+describe("game links", () => {
+  const decrypto: Game = {
+    id: 8,
+    name: "Decrypto",
+    maxPlayers: null,
+    link: "https://en.boardgamearena.com/gamepanel?game=decrypto",
+  };
+  const linked = `[Decrypto](${decrypto.link})`;
+  const field = (view: PollView, name: string) =>
+    renderPoll(view).embeds[0].toJSON().fields?.find((f) => f.name === name)?.value;
+
+  it("links a game's name on the Games line and leaves unlinked games plain", () => {
+    const view = openView({ games: [decrypto, lethal] });
+    expect(field(view, "Games")).toBe(`${linked} (0) · Lethal Company (0)`);
+  });
+
+  it("links the game in each suggestion", () => {
+    const hours = twoHours(days[0].startUtc);
+    const availability = new Map([["a", new Set(hours)]]);
+    const votes = new Map([["a", new Set([decrypto.id])]]);
+    const view = openView({ games: [decrypto], availability, votes });
+    expect(field(view, "Best right now")).toContain(`· ${linked}**`);
+  });
+
+  it("links the game on the locked card", () => {
+    const view = lockedView({ startUtc: 1, endUtc: 2, game: decrypto, roster: [] });
+    expect(renderPoll(view).embeds[0].toJSON().description).toContain(`**${linked}**`);
+  });
+
+  it("escapes brackets so a name cannot break its own link", () => {
+    const odd: Game = { ...decrypto, name: "Codenames [Duet]" };
+    expect(field(openView({ games: [odd] }), "Games")).toContain(
+      `[Codenames \\[Duet\\]](${decrypto.link})`,
+    );
+  });
+
+  it("falls back to plain names when links would overflow the Games field", () => {
+    const many: Game[] = Array.from({ length: 25 }, (_, i) => ({
+      id: 100 + i,
+      name: `Game number ${i}`,
+      maxPlayers: null,
+      link: `https://store.steampowered.com/app/${1_000_000 + i}/some-long-slug-for-the-game`,
+    }));
+    const value = field(openView({ games: many }), "Games") ?? "";
+    expect(value.length).toBeLessThanOrEqual(1024);
+    expect(value).not.toContain("](");
+    expect(value).toContain("Game number 24 (0)");
+  });
+});
