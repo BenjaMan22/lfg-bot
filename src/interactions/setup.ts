@@ -23,6 +23,7 @@ import {
   setAllowSuggestions,
   setVoiceChannel,
 } from "../db/repos/nights.js";
+import { pinPoll } from "../discord/pins.js";
 import { buildPollView } from "../discord/updateQueue.js";
 import { renderPoll } from "../discord/render.js";
 import { log } from "../log.js";
@@ -238,5 +239,6 @@ export async function handlePostButton(
     return;
   }
 
+  await pinPoll(ctx.db, nightId, message);
   await interaction.editReply({ content: "Posted.", components: [] });
 }

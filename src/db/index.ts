@@ -15,6 +15,7 @@ const ADDED_COLUMNS: { table: string; column: string; definition: string }[] = [
   { table: "nights", column: "failure_reason", definition: "TEXT" },
   { table: "games", column: "link", definition: "TEXT" },
   { table: "nights", column: "allow_suggestions", definition: "INTEGER NOT NULL DEFAULT 1" },
+  { table: "nights", column: "pinned", definition: "INTEGER NOT NULL DEFAULT 0" },
 ];
 
 function applyAddedColumns(db: DatabaseSync): void {

@@ -167,8 +167,9 @@ yet — you only need to run this command directly to change it later.
    screen follows.
 2. The host adjusts the games if needed (or adds a new one on the spot),
    optionally attaches a voice channel or turns off suggestions, then
-   clicks **Post it**. The poll
-   goes live in the channel as a single message.
+   clicks **Post it**. The poll goes live in the channel as a single
+   message, pinned so it's easy to find. The bot unpins it once the night
+   is over, or straight away if it's cancelled or nothing was viable.
 3. Every player who wants in clicks **Set availability** and picks the
    hours they're free on each proposed day, shown in their own timezone
    (the bot asks for it once, the first time it's needed, and remembers

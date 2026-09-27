@@ -32,6 +32,8 @@ export interface NightRow {
   failureReason: NightFailureReason | null;
   /** Whether the poll offers Suggest a game. Settable only while a draft. */
   allowSuggestions: boolean;
+  /** The bot pinned the poll and has not unpinned it yet. */
+  pinned: boolean;
 }
 
 export interface CreateNightInput {
@@ -65,6 +67,7 @@ interface NightDbRow {
   event_id: string | null;
   failure_reason: NightFailureReason | null;
   allow_suggestions: number;
+  pinned: number;
 }
 
 const toNight = (r: NightDbRow): NightRow => ({
@@ -85,12 +88,13 @@ const toNight = (r: NightDbRow): NightRow => ({
   eventId: r.event_id,
   failureReason: r.failure_reason,
   allowSuggestions: r.allow_suggestions === 1,
+  pinned: r.pinned === 1,
 });
 
 const NIGHT_COLUMNS = `SELECT id, guild_id, channel_id, message_id, host_id, title,
   display_tz, min_session_hours, deadline_utc, status, voice_channel_id,
   locked_start_utc, locked_end_utc, locked_game_id, event_id, failure_reason,
-  allow_suggestions
+  allow_suggestions, pinned
   FROM nights`;
 
 export function createDraftNight(db: DatabaseSync, input: CreateNightInput): number {
@@ -416,6 +420,28 @@ export function getResponderIds(db: DatabaseSync, nightId: number): Set<string> 
 export function dueNights(db: DatabaseSync, nowUtc: number): NightRow[] {
   const rows = allRows<NightDbRow>(
     db.prepare(`${NIGHT_COLUMNS} WHERE status = 'open' AND deadline_utc <= ?`),
+    nowUtc,
+  );
+  return rows.map(toNight);
+}
+
+export function setNightPinned(db: DatabaseSync, nightId: number, pinned: boolean): void {
+  db.prepare("UPDATE nights SET pinned = ? WHERE id = ?").run(pinned ? 1 : 0, nightId);
+}
+
+/**
+ * Pinned polls whose night is over: cancelled, failed, or locked with its
+ * window already ended. A locked night stays pinned until then, so its
+ * I'm in / I'm out buttons stay easy to find.
+ */
+export function nightsToUnpin(db: DatabaseSync, nowUtc: number): NightRow[] {
+  const rows = allRows<NightDbRow>(
+    db.prepare(
+      `${NIGHT_COLUMNS}
+       WHERE pinned = 1
+         AND (status IN ('cancelled', 'failed')
+              OR (status = 'locked' AND locked_end_utc <= ?))`,
+    ),
     nowUtc,
   );
   return rows.map(toNight);

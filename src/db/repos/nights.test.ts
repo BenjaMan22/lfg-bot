@@ -21,7 +21,9 @@ import {
   setAttendance,
   setAvailabilityForDay,
   setNightGames,
+  nightsToUnpin,
   setAllowSuggestions,
+  setNightPinned,
   setVoiceChannel,
   setVotes,
 } from "./nights.js";
@@ -341,5 +343,55 @@ describe("nights repository", () => {
       c: number;
     };
     expect(count.c).toBe(0);
+  });
+});
+
+describe("pinned polls", () => {
+  const HOUR = 3600;
+  const NOW = 2_000_000 * HOUR;
+
+  function pinnedOpenNight(): number {
+    const id = makeDraft();
+    publishNight(db, id, "m1");
+    setNightPinned(db, id, true);
+    return id;
+  }
+
+  const toUnpin = () => nightsToUnpin(db, NOW).map((n) => n.id);
+
+  it("starts unpinned and records a pin", () => {
+    const id = makeDraft();
+    expect(getNight(db, id)?.pinned).toBe(false);
+    setNightPinned(db, id, true);
+    expect(getNight(db, id)?.pinned).toBe(true);
+  });
+
+  it("keeps an open night pinned", () => {
+    pinnedOpenNight();
+    expect(toUnpin()).toEqual([]);
+  });
+
+  it("keeps a locked night pinned until its window ends", () => {
+    const game = addGame(db, "g1", "A", null, "u1");
+    const running = pinnedOpenNight();
+    lockNight(db, running, NOW - HOUR, NOW + HOUR, game.id, "e1");
+    const over = pinnedOpenNight();
+    lockNight(db, over, NOW - 3 * HOUR, NOW - HOUR, game.id, "e2");
+    expect(toUnpin()).toEqual([over]);
+  });
+
+  it("unpins a cancelled or failed night straight away", () => {
+    const cancelled = pinnedOpenNight();
+    cancelNight(db, cancelled);
+    const failed = pinnedOpenNight();
+    failNight(db, failed, "no_viable");
+    expect(toUnpin().sort()).toEqual([cancelled, failed].sort());
+  });
+
+  it("forgets a night once it is unpinned", () => {
+    const id = pinnedOpenNight();
+    cancelNight(db, id);
+    setNightPinned(db, id, false);
+    expect(toUnpin()).toEqual([]);
   });
 });

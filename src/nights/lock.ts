@@ -1,4 +1,4 @@
-import type { Client } from "discord.js";
+import { Routes, type Client } from "discord.js";
 import type { DatabaseSync } from "node:sqlite";
 import {
   deleteStaleDrafts,
@@ -10,6 +10,7 @@ import {
 } from "../db/repos/nights.js";
 import { buildPollView, renderNightNow } from "../discord/updateQueue.js";
 import { createScheduledEvent, deleteScheduledEvent } from "../discord/events.js";
+import { unpinFinishedNights } from "../discord/pins.js";
 import { log } from "../log.js";
 
 const SWEEP_MS = 30_000;
@@ -163,6 +164,11 @@ export async function processDueNights(
       );
     }
   }
+
+  // After locking, so a night that failed in this pass is unpinned in it too.
+  await unpinFinishedNights(db, nowUtc, async (channelId, messageId) => {
+    await client.rest.delete(Routes.channelMessagesPin(channelId, messageId));
+  });
 }
 
 export function startSweep(client: Client, db: DatabaseSync): NodeJS.Timeout {
@@ -173,8 +179,8 @@ export function startSweep(client: Client, db: DatabaseSync): NodeJS.Timeout {
   const processStartUtc = Math.floor(Date.now() / 1000);
   let running = false;
   const run = () => {
-    // A pass does several Discord round trips (including full member
-    // fetches); skip a tick that overlaps a still-running one rather than
+    // A pass does several Discord round trips (events, message edits,
+    // unpins); skip a tick that overlaps a still-running one rather than
     // double-lock a night that hasn't committed yet.
     if (running) return;
     running = true;

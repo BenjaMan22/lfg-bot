@@ -40,6 +40,8 @@ CREATE TABLE IF NOT EXISTS nights (
   failure_reason    TEXT,
   -- 1 = anyone can add a game to the poll with Suggest a game.
   allow_suggestions INTEGER NOT NULL DEFAULT 1,
+  -- 1 = the bot pinned the poll and still owes an unpin once it's over.
+  pinned            INTEGER NOT NULL DEFAULT 0,
   created_utc       INTEGER NOT NULL
 );
 
