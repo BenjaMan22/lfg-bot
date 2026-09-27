@@ -39,24 +39,47 @@ export function isValidZone(zone: string): boolean {
   return IANAZone.isValidZone(zone);
 }
 
-export function timezonePrompt(reason: string): InteractionReplyOptions {
+/** What to show once the timezone is saved, so the person carries straight on. */
+export interface NextStep {
+  content: string;
+  components: ActionRowBuilder<StringSelectMenuBuilder>[];
+}
+
+/**
+ * `then` is what the person was doing when they were asked — `"avail:6"` for
+ * Set availability on night 6. It rides along in the picker's custom ids so
+ * the handler that saves the zone can open that step straight away, rather
+ * than asking them to click the button again (which new players didn't).
+ */
+export function timezonePrompt(reason: string, then?: string): InteractionReplyOptions {
+  const suffix = then ? `:${then}` : "";
   return {
     content: `${reason}\n\nPick the closest one, or use **Other** for any IANA zone name.`,
     flags: MessageFlags.Ephemeral,
     components: [
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
-          .setCustomId("gn:tz")
+          .setCustomId(`gn:tz${suffix}`)
           .setPlaceholder("Your timezone")
           .addOptions(COMMON_ZONES),
       ),
       new ActionRowBuilder<ButtonBuilder>().addComponents(
         new ButtonBuilder()
-          .setCustomId("gn:tzother")
+          .setCustomId(`gn:tzother${suffix}`)
           .setLabel("Other")
           .setStyle(ButtonStyle.Secondary),
       ),
     ],
+  };
+}
+
+export function timezoneSetReply(zone: string, next?: NextStep): NextStep {
+  if (next) {
+    return { content: `Timezone set to **${zone}**.\n\n${next.content}`, components: next.components };
+  }
+  return {
+    content: `Timezone set to **${zone}**. If you were setting up a game night, run the command again — I'll use your local time.`,
+    components: [],
   };
 }
 
@@ -70,23 +93,25 @@ export function timezonePrompt(reason: string): InteractionReplyOptions {
 export async function requireTimezone(
   interaction: RepliableInteraction,
   ctx: AppContext,
+  then?: string,
 ): Promise<string | null> {
   const zone = getTimezone(ctx.db, interaction.user.id);
   if (zone) return zone;
   await interaction.reply(
-    timezonePrompt("I need your timezone first — I only ask once."),
+    timezonePrompt("I need your timezone first — I only ask once.", then),
   );
   return null;
 }
 
+/** Builds the step to carry on to, given the zone just saved. */
+export type Continuation = (zone: string) => NextStep;
+
 async function confirm(
   interaction: StringSelectMenuInteraction | ModalSubmitInteraction,
   zone: string,
+  next?: Continuation,
 ): Promise<void> {
-  const payload = {
-    content: `Timezone set to **${zone}**. If you were setting up a game night, run the command again — I'll use your local time. If you were answering a poll, click the button again.`,
-    components: [],
-  };
+  const payload = timezoneSetReply(zone, next?.(zone));
   if (interaction.isModalSubmit()) {
     await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
   } else {
@@ -97,18 +122,21 @@ async function confirm(
 export async function handleTimezoneSelect(
   interaction: StringSelectMenuInteraction,
   ctx: AppContext,
+  next?: Continuation,
 ): Promise<void> {
   const zone = interaction.values[0];
   setTimezone(ctx.db, interaction.user.id, zone);
-  await confirm(interaction, zone);
+  await confirm(interaction, zone, next);
 }
 
+/** `then` is passed on to the modal, so a typed-in zone carries on too. */
 export async function handleTimezoneOtherButton(
   interaction: ButtonInteraction,
+  then: string[],
 ): Promise<void> {
   await interaction.showModal(
     new ModalBuilder()
-      .setCustomId("gn:tzmodal")
+      .setCustomId(["gn:tzmodal", ...then].join(":"))
       .setTitle("Set your timezone")
       .addComponents(
         new ActionRowBuilder<TextInputBuilder>().addComponents(
@@ -126,6 +154,7 @@ export async function handleTimezoneOtherButton(
 export async function handleTimezoneModal(
   interaction: ModalSubmitInteraction,
   ctx: AppContext,
+  next?: Continuation,
 ): Promise<void> {
   const zone = interaction.fields.getTextInputValue("zone").trim();
   if (!isValidZone(zone)) {
@@ -136,5 +165,5 @@ export async function handleTimezoneModal(
     return;
   }
   setTimezone(ctx.db, interaction.user.id, zone);
-  await confirm(interaction, zone);
+  await confirm(interaction, zone, next);
 }

@@ -6,6 +6,7 @@ import {
   handleTimezoneModal,
   handleTimezoneOtherButton,
   handleTimezoneSelect,
+  type Continuation,
 } from "../discord/timezonePicker.js";
 import {
   handlePostButton,
@@ -14,6 +15,7 @@ import {
   handleSetupVoiceSelect,
 } from "./setup.js";
 import {
+  availabilityPicker,
   handleAvailabilityButton,
   handleDaySelect,
   handleInButton,
@@ -27,6 +29,19 @@ import {
 } from "./respond.js";
 import { handleGameAddModal } from "./games.js";
 import { handleGameNightCreateModal } from "./gamenightCreate.js";
+
+/**
+ * What a timezone pick carries on to, read back from the ids `timezonePrompt`
+ * was given — `gn:tz:avail:6` means "then open night 6's availability
+ * picker". Undefined means just confirm the zone.
+ */
+function continuation(ctx: AppContext, args: string[], userId: string): Continuation | undefined {
+  if (args[0] === "avail" && args[1]) {
+    const nightId = Number(args[1]);
+    return (zone) => availabilityPicker(ctx, nightId, userId, zone);
+  }
+  return undefined;
+}
 
 export function parseCustomId(id: string): { action: string; args: string[] } {
   const [namespace, action, ...args] = id.split(":");
@@ -191,7 +206,9 @@ async function dispatch(interaction: Interaction, ctx: AppContext): Promise<bool
   }
   if (interaction.isStringSelectMenu()) {
     const { action, args } = parseCustomId(interaction.customId);
-    if (action === "tz") return ran(handleTimezoneSelect(interaction, ctx));
+    if (action === "tz") {
+      return ran(handleTimezoneSelect(interaction, ctx, continuation(ctx, args, interaction.user.id)));
+    }
     if (action === "setup") return ran(handleSetupSelect(interaction, ctx, Number(args[0])));
     if (action === "day") {
       return ran(handleDaySelect(interaction, ctx, Number(args[0]), Number(args[1])));
@@ -206,7 +223,7 @@ async function dispatch(interaction: Interaction, ctx: AppContext): Promise<bool
   }
   if (interaction.isButton()) {
     const { action, args } = parseCustomId(interaction.customId);
-    if (action === "tzother") return ran(handleTimezoneOtherButton(interaction));
+    if (action === "tzother") return ran(handleTimezoneOtherButton(interaction, args));
     if (action === "post") return ran(handlePostButton(interaction, ctx, Number(args[0])));
     if (action === "setupadd") return ran(handleSuggestButton(interaction, Number(args[0])));
     if (action === "avail") return ran(handleAvailabilityButton(interaction, ctx, Number(args[0])));
@@ -223,7 +240,9 @@ async function dispatch(interaction: Interaction, ctx: AppContext): Promise<bool
   }
   if (interaction.isModalSubmit()) {
     const { action, args } = parseCustomId(interaction.customId);
-    if (action === "tzmodal") return ran(handleTimezoneModal(interaction, ctx));
+    if (action === "tzmodal") {
+      return ran(handleTimezoneModal(interaction, ctx, continuation(ctx, args, interaction.user.id)));
+    }
     if (action === "suggestmodal") return ran(handleSuggestModal(interaction, ctx, Number(args[0])));
     if (action === "gameaddmodal") return ran(handleGameAddModal(interaction, ctx));
     if (action === "createmodal") return ran(handleGameNightCreateModal(interaction, ctx));

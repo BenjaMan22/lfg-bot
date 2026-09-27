@@ -33,7 +33,7 @@ import { GameLinkError, parseGameLink } from "../domain/gameLink.js";
 import { PlayerCountError, parseMaxPlayers, playerCountLabel } from "../domain/playerCounts.js";
 import { SELECT_OPTION_LIMIT } from "../domain/pickers.js";
 import { queueRender } from "../discord/updateQueue.js";
-import { requireTimezone } from "../discord/timezonePicker.js";
+import { requireTimezone, type NextStep } from "../discord/timezonePicker.js";
 import { performCancel } from "../nights/cancel.js";
 
 const EXPIRED = "That poll is closed. Nothing to change.";
@@ -61,13 +61,32 @@ export async function handleAvailabilityButton(
   ctx: AppContext,
   nightId: number,
 ): Promise<void> {
-  const night = openNightOrNull(ctx, nightId);
-  if (!night) {
+  if (!openNightOrNull(ctx, nightId)) {
     await interaction.reply({ content: EXPIRED, flags: MessageFlags.Ephemeral });
     return;
   }
-  const tz = await requireTimezone(interaction, ctx);
+  // "avail:<id>" lets a first-timer's timezone pick open this picker straight
+  // away (see the router), instead of asking them to click again.
+  const tz = await requireTimezone(interaction, ctx, `avail:${nightId}`);
   if (!tz) return;
+  await interaction.reply({
+    ...availabilityPicker(ctx, nightId, interaction.user.id, tz),
+    flags: MessageFlags.Ephemeral,
+  });
+}
+
+/**
+ * The half-hour pickers for one person, one row per day. Shared by the Set
+ * availability button and the timezone picker's carry-on step, so both show
+ * exactly the same thing. No components means there is nothing to pick.
+ */
+export function availabilityPicker(
+  ctx: AppContext,
+  nightId: number,
+  userId: string,
+  tz: string,
+): NextStep {
+  if (!openNightOrNull(ctx, nightId)) return { content: EXPIRED, components: [] };
 
   const days = getNightDays(ctx.db, nightId);
   // A night created before availability moved to half hours may have a window
@@ -75,15 +94,14 @@ export async function handleAvailabilityButton(
   // options than a select menu can hold. discord.js throws on that, so say
   // what is actually wrong instead of surfacing the router's generic error.
   if (days.some((day) => slotsIn(day).length > SELECT_OPTION_LIMIT)) {
-    await interaction.reply({
+    return {
       content:
         "This poll's window is too long to answer now that availability moves in half hours. Cancel it with its 🗑️ button and start a new one — a window of 12 hours or less.",
-      flags: MessageFlags.Ephemeral,
-    });
-    return;
+      components: [],
+    };
   }
 
-  const chosen = getAvailability(ctx.db, nightId).get(interaction.user.id) ?? new Set();
+  const chosen = getAvailability(ctx.db, nightId).get(userId) ?? new Set();
   const rows = days.map((day) => {
     const slots = slotsIn(day);
     // slotLabels, not formatSlotLabel per slot: on a DST fall-back night two
@@ -106,11 +124,10 @@ export async function handleAvailabilityButton(
     );
   });
 
-  await interaction.reply({
+  return {
     content: `Pick the half-hour blocks you are free, in **${tz}**. Pick none and you're counted as free the whole time. Each change saves as you make it — just dismiss this when you are done.`,
-    flags: MessageFlags.Ephemeral,
     components: rows,
-  });
+  };
 }
 
 export async function handleDaySelect(
