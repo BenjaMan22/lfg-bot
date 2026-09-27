@@ -43,6 +43,29 @@ export interface SchedulingResult {
 
 export const MAX_SUGGESTIONS = 3;
 
+/**
+ * Picking games without picking times means "I'm in, whenever" — so count
+ * that person as free for every slot of every day. Without this they
+ * responded but appeared in no range and on no roster.
+ *
+ * Applied when reading, never stored: picking any times switches them to
+ * exactly those, and "I'm out" (which clears their votes) removes them.
+ * Returns a new map; the one given is left alone.
+ */
+export function assumeFreeWhenUnset(
+  days: NightDay[],
+  availability: Map<string, Set<number>>,
+  votes: Map<string, Set<number>>,
+): Map<string, Set<number>> {
+  const result = new Map(availability);
+  for (const [userId, gameIds] of votes) {
+    if (gameIds.size > 0 && (availability.get(userId)?.size ?? 0) === 0) {
+      result.set(userId, new Set(days.flatMap(slotsIn)));
+    }
+  }
+  return result;
+}
+
 /** Runs are measured in half-hour slots; minSessionHours converts into them. */
 const SLOTS_PER_HOUR = 3600 / SLOT_SECONDS;
 

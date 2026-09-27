@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import type { DatabaseSync } from "node:sqlite";
-import { rankNight } from "../domain/scheduling.js";
+import { assumeFreeWhenUnset, rankNight } from "../domain/scheduling.js";
 import { getGamesByIds } from "../db/repos/games.js";
 import {
   getAttendance,
@@ -28,8 +28,10 @@ export function buildPollView(db: DatabaseSync, nightId: number): PollView | nul
 
   const days = getNightDays(db, nightId);
   const games = getGamesByIds(db, getNightGameIds(db, nightId));
-  const availability = getAvailability(db, nightId);
   const votes = getVotes(db, nightId);
+  // One place, so the ranking, the "Who's in?" list and the lock all agree
+  // on who counts as free when.
+  const availability = assumeFreeWhenUnset(days, getAvailability(db, nightId), votes);
   const responderIds = getResponderIds(db, nightId);
   const result = rankNight({
     days,

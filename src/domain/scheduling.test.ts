@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { rankNight, type Game, type SchedulingInput } from "./scheduling.js";
-import type { NightDay } from "./timeblocks.js";
+import { assumeFreeWhenUnset, rankNight, type Game, type SchedulingInput } from "./scheduling.js";
+import { slotsIn, type NightDay } from "./timeblocks.js";
 
 const H = 3600;
 /** Day 0 runs 0..6 in "hour units" for readability; real code uses epoch seconds. */
@@ -286,5 +286,51 @@ describe("rankNight", () => {
       input({ ...everyone(d, ["a", "b"], [0, 1, 2], [2]), minSessionHours: 0 }),
     );
     expect(result).toEqual({ top: [] });
+  });
+});
+
+describe("assumeFreeWhenUnset", () => {
+  const d0 = day(0, 2);
+  const d1 = day(1, 1);
+  const allSlots = [...slotsIn(d0), ...slotsIn(d1)];
+
+  it("counts someone who picked games but no times as free on every slot of every day", () => {
+    const result = assumeFreeWhenUnset(
+      [d0, d1],
+      new Map(),
+      new Map([["shirtzes", new Set([2])]]),
+    );
+    expect([...(result.get("shirtzes") ?? [])]).toEqual(allSlots);
+  });
+
+  it("leaves anyone who picked times exactly as they picked", () => {
+    const picked = new Set([at(d0, 0)]);
+    const result = assumeFreeWhenUnset(
+      [d0, d1],
+      new Map([["a", picked]]),
+      new Map([["a", new Set([2])]]),
+    );
+    expect(result.get("a")).toEqual(picked);
+  });
+
+  it("does not add anyone who has not picked a game", () => {
+    const result = assumeFreeWhenUnset([d0], new Map(), new Map([["a", new Set<number>()]]));
+    expect(result.has("a")).toBe(false);
+  });
+
+  it("does not change the map it was given", () => {
+    const availability = new Map<string, Set<number>>();
+    assumeFreeWhenUnset([d0], availability, new Map([["a", new Set([2])]]));
+    expect(availability.size).toBe(0);
+  });
+
+  it("puts a games-only responder on the roster", () => {
+    const d = day(0, 6);
+    const base = everyone(d, ["a"], [0, 1], [2]);
+    const votes = new Map([...base.votes, ["shirtzes", new Set([2])]]);
+    const result = rankNight(
+      input({ days: [d], votes, availability: assumeFreeWhenUnset([d], base.availability, votes) }),
+    );
+    expect(result.top[0].roster).toEqual(expect.arrayContaining(["a", "shirtzes"]));
   });
 });

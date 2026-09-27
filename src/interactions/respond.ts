@@ -107,7 +107,7 @@ export async function handleAvailabilityButton(
   });
 
   await interaction.reply({
-    content: `Pick the half-hour blocks you are free, in **${tz}**. Each change saves as you make it — just dismiss this when you are done.`,
+    content: `Pick the half-hour blocks you are free, in **${tz}**. Pick none and you're counted as free the whole time. Each change saves as you make it — just dismiss this when you are done.`,
     flags: MessageFlags.Ephemeral,
     components: rows,
   });
@@ -152,7 +152,8 @@ export async function handleVotesButton(
   const chosen = getVotes(ctx.db, nightId).get(interaction.user.id) ?? new Set();
 
   await interaction.reply({
-    content: "Which of these would you play? Saves as you pick.",
+    content:
+      "Which of these would you play? Saves as you pick. If you don't set availability, you're counted as free the whole time.",
     flags: MessageFlags.Ephemeral,
     components: [
       new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
