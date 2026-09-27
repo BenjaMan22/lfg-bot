@@ -19,8 +19,8 @@ itself, posts the result, and creates a Discord Scheduled Event for it.
   timezone), **Pick games** to say which of the shortlisted games they'd
   play, **Suggest a game** to add one that isn't on the shortlist, or **I'm
   out** to opt out entirely. The message re-renders after every response,
-  showing a live availability grid, vote counts, and the top-ranked
-  time/game combinations so far.
+  showing who's in for which times (in each viewer's own timezone), vote
+  counts, and the top-ranked time/game combinations so far.
 - An hour before the first day starts, the bot picks the best combination
   on its own — the (time window × game) pairing with the largest roster —
   locks the night, creates a Discord Scheduled Event, and pings the roster.
@@ -171,8 +171,8 @@ yet — you only need to run this command directly to change it later.
    it). They also click **Pick games** to mark which of the shortlisted
    games they'd actually play, or **Suggest a game** to add one that isn't
    listed. Anyone not interested clicks **I'm out**.
-4. The poll message updates after every response: an availability grid,
-   vote counts per game, and the top few (time window × game) combinations
+4. The poll message updates after every response: a **Who's in?** list
+   of time ranges with a headcount each, vote counts per game, and the top few (time window × game) combinations
    ranked by roster size, right on the card.
 5. An hour before the first day starts, a background sweep (checked every
    30 seconds) picks the best combination itself — the one with the

@@ -69,11 +69,6 @@ export function formatSlotLabel(utcSlot: number, tz: string): string {
     : `${hour12}:${String(local.minute).padStart(2, "0")}${meridiem}`;
 }
 
-/** True when a slot begins exactly on the hour. Used to thin out grid labels. */
-export function isOnTheHour(utcSlot: number, tz: string): boolean {
-  return DateTime.fromSeconds(utcSlot, { zone: tz }).minute === 0;
-}
-
 export function formatDayLabel(day: NightDay, tz: string): string {
   return DateTime.fromSeconds(day.startUtc, { zone: tz }).toFormat("ccc LLL d");
 }

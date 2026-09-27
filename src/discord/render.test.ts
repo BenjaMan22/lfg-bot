@@ -5,7 +5,7 @@ import {
   type LockedDetails,
   type PollView,
 } from "./render.js";
-import { expandDays } from "../domain/timeblocks.js";
+import { expandDays, slotsIn } from "../domain/timeblocks.js";
 import { rankNight } from "../domain/scheduling.js";
 import type { Game, SchedulingResult } from "../domain/scheduling.js";
 
@@ -49,6 +49,10 @@ function openView(over: BaseOverrides = {}): PollView {
   return { ...baseFields(over), status: "open" };
 }
 
+function whoIsInField(view: PollView) {
+  return renderPoll(view).embeds[0].toJSON().fields?.find((f) => f.name === "Who's in?");
+}
+
 function failedView(
   over: BaseOverrides = {},
   failureReason: FailureReason | null = "no_viable",
@@ -61,16 +65,64 @@ function lockedView(locked: LockedDetails, over: BaseOverrides = {}): PollView {
 }
 
 describe("renderPoll", () => {
-  it("names the display timezone so the grid is unambiguous", () => {
+  it("says the dates are the host's but the times are each viewer's own", () => {
+    // Day headings are formatted in the host's zone; the ranges are Discord
+    // timestamps, which every viewer sees in their own.
     const embed = renderPoll(openView()).embeds[0].toJSON();
-    expect(JSON.stringify(embed)).toContain(CHI);
+    expect(embed.footer?.text).toBe(`Dates in ${CHI} · times in your own timezone`);
   });
 
-  it("renders a grid row per day with hour labels", () => {
-    const embed = renderPoll(openView()).embeds[0].toJSON();
-    const text = JSON.stringify(embed);
-    expect(text).toContain("Fri Aug 28");
-    expect(text).toContain("6p");
+  it("merges who's in into time ranges with a headcount each", () => {
+    const start = days[0].startUtc;
+    const availability = new Map([
+      ["a", new Set(twoHours(start))],
+      ["b", new Set(twoHours(start))],
+      ["c", new Set([start, start + 1800])],
+    ]);
+    const field = whoIsInField(openView({ availability }));
+    expect(field?.value).toBe(
+      [
+        "**Fri Aug 28**",
+        `<t:${start}:t> – <t:${start + 3600}:t> · **3 in**`,
+        `<t:${start + 3600}:t> – <t:${start + 7200}:t> · **2 in**`,
+      ].join("\n"),
+    );
+  });
+
+  it("splits a range where nobody is in", () => {
+    const start = days[0].startUtc;
+    const availability = new Map([["a", new Set([start, start + 7200])]]);
+    const field = whoIsInField(openView({ availability }));
+    expect(field?.value).toContain(`<t:${start}:t> – <t:${start + 1800}:t> · **1 in**`);
+    expect(field?.value).toContain(`<t:${start + 7200}:t> – <t:${start + 9000}:t> · **1 in**`);
+  });
+
+  it("says nobody yet for a day with no one in", () => {
+    expect(whoIsInField(openView())?.value).toBe("**Fri Aug 28** · _nobody yet_");
+  });
+
+  it("keeps each day's busiest ranges when every range would not fit", () => {
+    // Alternating headcounts give a range per half hour: 23 a day, five days,
+    // several thousand characters — far past the 1024 discord.js throws on.
+    const longDays = expandDays(
+      ["2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28"],
+      { startMinutes: 12 * 60, endMinutes: 23 * 60 + 30 },
+      CHI,
+    );
+    const everySlot = longDays.flatMap(slotsIn);
+    const everyOther = everySlot.filter((_, i) => i % 2 === 1);
+    const availability = new Map([
+      ["a", new Set(everySlot)],
+      ["b", new Set(everyOther)],
+    ]);
+    const view: PollView = { ...openView({ availability }), days: longDays };
+    const field = whoIsInField(view);
+    expect(field?.value.length).toBeLessThanOrEqual(1024);
+    expect(field?.value).toContain("**Mon Aug 24**");
+    expect(field?.value).toContain("**Fri Aug 28**");
+    expect(field?.value).toMatch(/_\+\d+ more_/);
+    // The busiest ranges survive the cut.
+    expect(field?.value).toContain("**2 in**");
   });
 
   it("uses a dynamic timestamp for the deadline so each viewer sees local time", () => {

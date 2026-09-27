@@ -7,9 +7,8 @@ import {
 import { MIN_SESSION_HOURS } from "../domain/pickers.js";
 import type { Game, SchedulingResult } from "../domain/scheduling.js";
 import {
+  SLOT_SECONDS,
   formatDayLabel,
-  formatSlotLabel,
-  isOnTheHour,
   slotsIn,
   type NightDay,
 } from "../domain/timeblocks.js";
@@ -120,25 +119,72 @@ function countsFor(day: NightDay, availability: Map<string, Set<number>>): numbe
   });
 }
 
-function grid(view: PollView): string {
-  const lines: string[] = [];
-  for (const day of view.days) {
-    const hours = slotsIn(day);
-    // A label on every half-hour column would roughly double the grid's width
-    // and push five days past the 1024-character embed field limit, which
-    // discord.js throws on. Labelling only the hour keeps a column per slot —
-    // the counts are what people read across — while the header stays legible.
-    const labels = hours.map((h) =>
-      isOnTheHour(h, view.displayTz) ? formatSlotLabel(h, view.displayTz) : "",
-    );
-    const counts = countsFor(day, view.availability).map((c) => (c === 0 ? "·" : String(c)));
-    const width = labels.map((label, i) => Math.max(label.length, counts[i].length));
-    const pad = (cells: string[]) =>
-      cells.map((cell, i) => cell.padStart(width[i])).join(" ");
-    lines.push(`${formatDayLabel(day, view.displayTz).padEnd(12)} ${pad(labels)}`);
-    lines.push(`${" ".repeat(12)} ${pad(counts)}`);
+interface InRange {
+  startUtc: number;
+  endUtc: number;
+  count: number;
+}
+
+/**
+ * A day's half-hour slots merged into runs with the same headcount. Slots
+ * nobody picked are left out, so a gap splits two runs even when the counts
+ * either side match.
+ */
+function inRanges(day: NightDay, availability: Map<string, Set<number>>): InRange[] {
+  const counts = countsFor(day, availability);
+  const ranges: InRange[] = [];
+  slotsIn(day).forEach((slot, i) => {
+    const count = counts[i];
+    if (count === 0) return;
+    const last = ranges.at(-1);
+    if (last && last.count === count && last.endUtc === slot) {
+      last.endUtc = slot + SLOT_SECONDS;
+    } else {
+      ranges.push({ startUtc: slot, endUtc: slot + SLOT_SECONDS, count });
+    }
+  });
+  return ranges;
+}
+
+/** Ranges shown per day, loosest first, until the whole field fits. */
+const RANGES_PER_DAY = [Infinity, 6, 4, 2, 1];
+
+function dayBlock(label: string, ranges: InRange[], limit: number): string {
+  if (ranges.length === 0) return `**${label}** · _nobody yet_`;
+  // Over the limit, keep the busiest ranges — those are the ones worth
+  // planning around — then put them back in time order.
+  const shown =
+    ranges.length <= limit
+      ? ranges
+      : [...ranges]
+          .sort((a, b) => b.count - a.count || a.startUtc - b.startUtc)
+          .slice(0, limit)
+          .sort((a, b) => a.startUtc - b.startUtc);
+  const lines = shown.map(
+    (r) => `${clock(r.startUtc)} – ${clock(r.endUtc)} · **${r.count} in**`,
+  );
+  const hidden = ranges.length - shown.length;
+  if (hidden > 0) lines.push(`_+${hidden} more_`);
+  return [`**${label}**`, ...lines].join("\n");
+}
+
+/**
+ * Timestamps rather than a monospace grid: Discord shows each one in the
+ * viewer's own timezone, and a line per range reads without a key. The cost
+ * is length — a timestamped line is ~45 characters — so a scattered set of
+ * answers is trimmed per day rather than left to overflow the field.
+ */
+function whoIsIn(view: PollView): string {
+  const days = view.days.map((day) => ({
+    label: formatDayLabel(day, view.displayTz),
+    ranges: inRanges(day, view.availability),
+  }));
+  let text = "";
+  for (const limit of RANGES_PER_DAY) {
+    text = days.map((d) => dayBlock(d.label, d.ranges, limit)).join("\n");
+    if (text.length <= FIELD_LIMIT) break;
   }
-  return `\`\`\`\n${lines.join("\n")}\n\`\`\``;
+  return text;
 }
 
 function gameLine(view: PollView): string {
@@ -180,7 +226,7 @@ export function renderPoll(view: PollView): {
 } {
   const embed = new EmbedBuilder()
     .setTitle(`🎲 ${view.title}`)
-    .setFooter({ text: `Grid shown in ${view.displayTz}` });
+    .setFooter({ text: `Dates in ${view.displayTz} · times in your own timezone` });
 
   if (view.status === "locked") {
     embed
@@ -247,7 +293,7 @@ export function renderPoll(view: PollView): {
     .setColor(0x5865f2)
     .setDescription(`Picks the night <t:${view.deadlineUtc}:R> · ${responded}`)
     .addFields(
-      { name: "Availability", value: fitField(grid(view)) },
+      { name: "Who's in?", value: fitField(whoIsIn(view)) },
       { name: "Games", value: fitField(gameLine(view)) },
       { name: "Best right now", value: fitField(suggestionLines(view)) },
     );
