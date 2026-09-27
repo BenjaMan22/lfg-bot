@@ -200,6 +200,6 @@ export async function handleGameNightCreateModal(
   await interaction.reply({
     content: `Attach a voice channel if you want one, then post it.${librarySelectNote(library.length)}`,
     flags: MessageFlags.Ephemeral,
-    components: buildGameSetupComponents(nightId, library, pickedGameIds, null),
+    components: buildGameSetupComponents(nightId, library, pickedGameIds, null, true),
   });
 }

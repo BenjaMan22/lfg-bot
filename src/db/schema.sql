@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS nights (
   locked_game_id    INTEGER REFERENCES games(id),
   event_id          TEXT,
   failure_reason    TEXT,
+  -- 1 = anyone can add a game to the poll with Suggest a game.
+  allow_suggestions INTEGER NOT NULL DEFAULT 1,
   created_utc       INTEGER NOT NULL
 );
 

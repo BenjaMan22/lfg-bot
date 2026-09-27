@@ -190,6 +190,27 @@ export async function handleVotesSelect(
   queueRender(interaction.client, ctx.db, nightId);
 }
 
+/**
+ * The poll's Suggest a game. The button is left off when the host turned
+ * suggestions off, but a copy of the message rendered before a restart, or
+ * one still on screen, can carry it — so the setting is checked here too.
+ */
+export async function handlePollSuggestButton(
+  interaction: ButtonInteraction,
+  ctx: AppContext,
+  nightId: number,
+): Promise<void> {
+  const night = openNightOrNull(ctx, nightId);
+  if (night && !night.allowSuggestions) {
+    await interaction.reply({
+      content: "The host turned off suggestions for this game night.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  await handleSuggestButton(interaction, nightId);
+}
+
 export async function handleSuggestButton(
   interaction: ButtonInteraction,
   nightId: number,
@@ -297,7 +318,13 @@ export async function handleSuggestModal(
     const chosenIds = getNightGameIds(ctx.db, nightId);
     await interaction.update({
       content: `${confirmation}\n\nPick the games for this night, then post it.${librarySelectNote(library.length)}`,
-      components: buildGameSetupComponents(nightId, library, chosenIds, night.voiceChannelId),
+      components: buildGameSetupComponents(
+        nightId,
+        library,
+        chosenIds,
+        night.voiceChannelId,
+        night.allowSuggestions,
+      ),
     });
     return;
   }

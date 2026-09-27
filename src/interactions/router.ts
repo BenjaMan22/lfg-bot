@@ -7,12 +7,18 @@ import {
   handleTimezoneOtherButton,
   handleTimezoneSelect,
 } from "../discord/timezonePicker.js";
-import { handlePostButton, handleSetupSelect, handleSetupVoiceSelect } from "./setup.js";
+import {
+  handlePostButton,
+  handleSetupSelect,
+  handleSetupSuggestToggle,
+  handleSetupVoiceSelect,
+} from "./setup.js";
 import {
   handleAvailabilityButton,
   handleDaySelect,
   handleInButton,
   handleOutButton,
+  handlePollSuggestButton,
   handleSuggestButton,
   handleSuggestModal,
   handleTrashButton,
@@ -205,7 +211,12 @@ async function dispatch(interaction: Interaction, ctx: AppContext): Promise<bool
     if (action === "setupadd") return ran(handleSuggestButton(interaction, Number(args[0])));
     if (action === "avail") return ran(handleAvailabilityButton(interaction, ctx, Number(args[0])));
     if (action === "votes") return ran(handleVotesButton(interaction, ctx, Number(args[0])));
-    if (action === "suggest") return ran(handleSuggestButton(interaction, Number(args[0])));
+    if (action === "suggest") {
+      return ran(handlePollSuggestButton(interaction, ctx, Number(args[0])));
+    }
+    if (action === "setupsuggest") {
+      return ran(handleSetupSuggestToggle(interaction, ctx, Number(args[0])));
+    }
     if (action === "out") return ran(handleOutButton(interaction, ctx, Number(args[0])));
     if (action === "in") return ran(handleInButton(interaction, ctx, Number(args[0])));
     if (action === "trash") return ran(handleTrashButton(interaction, ctx, Number(args[0])));

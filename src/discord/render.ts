@@ -30,6 +30,8 @@ interface PollViewBase {
   availability: Map<string, Set<number>>;
   votes: Map<string, Set<number>>;
   responderIds: Set<string>;
+  /** False hides Suggest a game — the host chose this on the setup screen. */
+  allowSuggestions: boolean;
   result: SchedulingResult;
 }
 
@@ -298,31 +300,37 @@ export function renderPoll(view: PollView): {
       { name: "Best right now", value: fitField(suggestionLines(view)) },
     );
 
+  const buttons = [
+    new ButtonBuilder()
+      .setCustomId(`gn:avail:${view.nightId}`)
+      .setLabel("Set availability")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`gn:votes:${view.nightId}`)
+      .setLabel("Pick games")
+      .setStyle(ButtonStyle.Primary),
+  ];
+  if (view.allowSuggestions) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`gn:suggest:${view.nightId}`)
+        .setLabel("Suggest a game")
+        .setStyle(ButtonStyle.Secondary),
+    );
+  }
+  buttons.push(
+    new ButtonBuilder()
+      .setCustomId(`gn:out:${view.nightId}`)
+      .setLabel("I'm out")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`gn:trash:${view.nightId}`)
+      .setEmoji("🗑️")
+      .setStyle(ButtonStyle.Danger),
+  );
+
   return {
     embeds: [embed],
-    components: [
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`gn:avail:${view.nightId}`)
-          .setLabel("Set availability")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId(`gn:votes:${view.nightId}`)
-          .setLabel("Pick games")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId(`gn:suggest:${view.nightId}`)
-          .setLabel("Suggest a game")
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId(`gn:out:${view.nightId}`)
-          .setLabel("I'm out")
-          .setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder()
-          .setCustomId(`gn:trash:${view.nightId}`)
-          .setEmoji("🗑️")
-          .setStyle(ButtonStyle.Danger),
-      ),
-    ],
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(buttons)],
   };
 }

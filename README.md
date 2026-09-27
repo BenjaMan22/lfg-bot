@@ -109,7 +109,9 @@ from now.
 After you submit, a private setup screen lets you adjust the games, add one
 that isn't in the library yet (**Add a game**), attach a voice channel for
 the Scheduled Event, and **Post it**. The poll only becomes visible to the
-channel once you click **Post it**.
+channel once you click **Post it**. Players can add games to the poll with
+**Suggest a game** unless you click **✓ Suggestions on** to switch it to
+**✕ Suggestions off** before posting.
 
 ### `/gamenight cancel`
 
@@ -163,7 +165,8 @@ yet — you only need to run this command directly to change it later.
    days, a start time and a length — all from dropdowns. A private setup
    screen follows.
 2. The host adjusts the games if needed (or adds a new one on the spot),
-   optionally attaches a voice channel, then clicks **Post it**. The poll
+   optionally attaches a voice channel or turns off suggestions, then
+   clicks **Post it**. The poll
    goes live in the channel as a single message.
 3. Every player who wants in clicks **Set availability** and picks the
    hours they're free on each proposed day, shown in their own timezone

@@ -14,12 +14,14 @@ import type { AppContext } from "../context.js";
 import { lockIsStillAhead, SELECT_OPTION_LIMIT } from "../domain/pickers.js";
 import { playerCountLabel } from "../domain/playerCounts.js";
 import type { Game } from "../domain/scheduling.js";
+import { listGames } from "../db/repos/games.js";
 import {
   getNight,
   getNightGameIds,
   getOpenNightForChannel,
   publishNight,
   setNightGames,
+  setAllowSuggestions,
   setVoiceChannel,
 } from "../db/repos/nights.js";
 import { buildPollView } from "../discord/updateQueue.js";
@@ -65,6 +67,7 @@ export function buildGameSetupComponents(
   library: Game[],
   chosenIds: number[],
   currentVoiceChannelId: string | null,
+  allowSuggestions: boolean,
 ): [
   ActionRowBuilder<StringSelectMenuBuilder>,
   ActionRowBuilder<ChannelSelectMenuBuilder>,
@@ -101,6 +104,13 @@ export function buildGameSetupComponents(
         .setCustomId(`gn:setupadd:${nightId}`)
         .setLabel("Add a game")
         .setStyle(ButtonStyle.Secondary),
+      // A modal checkbox was the first idea, but the create form already has
+      // Discord's maximum of five fields — so it is a toggle here instead,
+      // labelled with its current state.
+      new ButtonBuilder()
+        .setCustomId(`gn:setupsuggest:${nightId}`)
+        .setLabel(allowSuggestions ? "✓ Suggestions on" : "✕ Suggestions off")
+        .setStyle(allowSuggestions ? ButtonStyle.Primary : ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`gn:post:${nightId}`)
         .setLabel("Post it")
@@ -135,6 +145,32 @@ export async function handleSetupVoiceSelect(
 ): Promise<void> {
   setVoiceChannel(ctx.db, nightId, interaction.values[0] ?? null);
   await interaction.deferUpdate();
+}
+
+export async function handleSetupSuggestToggle(
+  interaction: ButtonInteraction,
+  ctx: AppContext,
+  nightId: number,
+): Promise<void> {
+  const night = getNight(ctx.db, nightId);
+  if (!night || !setAllowSuggestions(ctx.db, nightId, !night.allowSuggestions)) {
+    await interaction.reply({
+      content: "This game night is already posted, so its buttons can't change now.",
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  // Rebuilt from the database, not patched in place, so the host's game picks
+  // and voice channel survive the redraw.
+  await interaction.update({
+    components: buildGameSetupComponents(
+      nightId,
+      listGames(ctx.db, night.guildId),
+      getNightGameIds(ctx.db, nightId),
+      night.voiceChannelId,
+      !night.allowSuggestions,
+    ),
+  });
 }
 
 export async function handlePostButton(

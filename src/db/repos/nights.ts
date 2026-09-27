@@ -30,6 +30,8 @@ export interface NightRow {
   lockedGameId: number | null;
   eventId: string | null;
   failureReason: NightFailureReason | null;
+  /** Whether the poll offers Suggest a game. Settable only while a draft. */
+  allowSuggestions: boolean;
 }
 
 export interface CreateNightInput {
@@ -62,6 +64,7 @@ interface NightDbRow {
   locked_game_id: number | null;
   event_id: string | null;
   failure_reason: NightFailureReason | null;
+  allow_suggestions: number;
 }
 
 const toNight = (r: NightDbRow): NightRow => ({
@@ -81,11 +84,13 @@ const toNight = (r: NightDbRow): NightRow => ({
   lockedGameId: r.locked_game_id,
   eventId: r.event_id,
   failureReason: r.failure_reason,
+  allowSuggestions: r.allow_suggestions === 1,
 });
 
 const NIGHT_COLUMNS = `SELECT id, guild_id, channel_id, message_id, host_id, title,
   display_tz, min_session_hours, deadline_utc, status, voice_channel_id,
-  locked_start_utc, locked_end_utc, locked_game_id, event_id, failure_reason
+  locked_start_utc, locked_end_utc, locked_game_id, event_id, failure_reason,
+  allow_suggestions
   FROM nights`;
 
 export function createDraftNight(db: DatabaseSync, input: CreateNightInput): number {
@@ -134,6 +139,17 @@ export function setVoiceChannel(
   db.prepare(
     "UPDATE nights SET voice_channel_id = ? WHERE id = ? AND status = 'draft'",
   ).run(voiceChannelId, nightId);
+}
+
+/**
+ * Draft-only, like the voice channel: once posted, the poll's buttons are
+ * already out there. Returns false when the night was no longer a draft.
+ */
+export function setAllowSuggestions(db: DatabaseSync, nightId: number, allow: boolean): boolean {
+  const result = db
+    .prepare("UPDATE nights SET allow_suggestions = ? WHERE id = ? AND status = 'draft'")
+    .run(allow ? 1 : 0, nightId);
+  return result.changes > 0;
 }
 
 export function getNight(db: DatabaseSync, id: number): NightRow | null {

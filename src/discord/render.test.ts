@@ -41,6 +41,7 @@ function baseFields(over: BaseOverrides = {}) {
     availability,
     votes,
     responderIds: new Set(availability.keys()),
+    allowSuggestions: true,
     result: over.result ?? rankNight({ days, minSessionHours: 2, games, availability, votes }),
   };
 }
@@ -212,6 +213,13 @@ describe("renderPoll", () => {
       "gn:out:7",
       "gn:trash:7",
     ]);
+  });
+
+  it("leaves out Suggest a game when the host turned suggestions off", () => {
+    const view: PollView = { ...openView(), allowSuggestions: false };
+    const [row] = renderPoll(view).components;
+    const ids = row.toJSON().components.map((c) => (c as { custom_id: string }).custom_id);
+    expect(ids).toEqual(["gn:avail:7", "gn:votes:7", "gn:out:7", "gn:trash:7"]);
   });
 
   it("swaps to in/out buttons once locked", () => {

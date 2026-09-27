@@ -23,6 +23,7 @@ import {
   setAttendance,
   setAvailabilityForDay,
   setNightGames,
+  setAllowSuggestions,
   setVoiceChannel,
   setVotes,
 } from "./nights.js";
@@ -97,6 +98,25 @@ describe("nights repository", () => {
     publishNight(db, id, "m1");
     setVoiceChannel(db, id, "voice-1");
     expect(getNight(db, id)?.voiceChannelId).toBeNull();
+  });
+
+  it("allows suggestions by default", () => {
+    expect(getNight(db, makeDraft())?.allowSuggestions).toBe(true);
+  });
+
+  it("switches suggestions off and back on while a draft", () => {
+    const id = makeDraft();
+    expect(setAllowSuggestions(db, id, false)).toBe(true);
+    expect(getNight(db, id)?.allowSuggestions).toBe(false);
+    setAllowSuggestions(db, id, true);
+    expect(getNight(db, id)?.allowSuggestions).toBe(true);
+  });
+
+  it("does not change suggestions once the night is posted", () => {
+    const id = makeDraft();
+    publishNight(db, id, "m1");
+    expect(setAllowSuggestions(db, id, false)).toBe(false);
+    expect(getNight(db, id)?.allowSuggestions).toBe(true);
   });
 
   it("refuses to publish the same draft twice", () => {

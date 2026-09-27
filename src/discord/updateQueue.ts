@@ -75,6 +75,7 @@ export function buildPollView(db: DatabaseSync, nightId: number): PollView | nul
     availability,
     votes,
     responderIds,
+    allowSuggestions: night.allowSuggestions,
     result,
   };
 

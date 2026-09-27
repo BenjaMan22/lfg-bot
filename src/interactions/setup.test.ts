@@ -8,7 +8,7 @@ const added: Game = { id: 3, name: "Added Later", maxPlayers: null };
 
 describe("buildGameSetupComponents", () => {
   it("offers every library game as an option", () => {
-    const [gameRow] = buildGameSetupComponents(1, [catan, lethal], [], null);
+    const [gameRow] = buildGameSetupComponents(1, [catan, lethal], [], null, true);
     const select = gameRow.toJSON().components[0];
     expect(select.options.map((o) => o.value)).toEqual(["1", "2"]);
   });
@@ -18,7 +18,7 @@ describe("buildGameSetupComponents", () => {
     // /gamenight create time and never rebuilt, so a game suggested later
     // via "Add a game" was never among its options and silently vanished
     // the next time the host adjusted their picks.
-    const [gameRow] = buildGameSetupComponents(1, [catan, lethal, added], [], null);
+    const [gameRow] = buildGameSetupComponents(1, [catan, lethal, added], [], null, true);
     const select = gameRow.toJSON().components[0];
     expect(select.options.map((o) => o.value)).toContain("3");
   });
@@ -29,6 +29,7 @@ describe("buildGameSetupComponents", () => {
       [catan, lethal, added],
       [lethal.id, added.id],
       null,
+      true,
     );
     const select = gameRow.toJSON().components[0];
     const byValue = new Map(select.options.map((o) => [o.value, o.default ?? false]));
@@ -43,7 +44,7 @@ describe("buildGameSetupComponents", () => {
       name: `Game ${i + 1}`,
       maxPlayers: null,
     }));
-    const [gameRow] = buildGameSetupComponents(1, library, [], null);
+    const [gameRow] = buildGameSetupComponents(1, library, [], null, true);
     const select = gameRow.toJSON().components[0];
     expect(select.options).toHaveLength(25);
   });
@@ -61,22 +62,32 @@ describe("buildGameSetupComponents", () => {
     expect(note).toMatch(/5/);
   });
 
-  it("includes the add-a-game and post-it buttons", () => {
-    const [, , buttonRow] = buildGameSetupComponents(9, [catan], [], null);
+  it("includes the add-a-game, suggestions and post-it buttons", () => {
+    const [, , buttonRow] = buildGameSetupComponents(9, [catan], [], null, true);
     const customIds = buttonRow
       .toJSON()
       .components.map((c) => ("custom_id" in c ? c.custom_id : undefined));
-    expect(customIds).toEqual(["gn:setupadd:9", "gn:post:9"]);
+    expect(customIds).toEqual(["gn:setupadd:9", "gn:setupsuggest:9", "gn:post:9"]);
+  });
+
+  it("labels the suggestions toggle with its current state", () => {
+    const label = (allow: boolean) => {
+      const [, , buttonRow] = buildGameSetupComponents(9, [catan], [], null, allow);
+      const toggle = buttonRow.toJSON().components[1];
+      return "label" in toggle ? toggle.label : undefined;
+    };
+    expect(label(true)).toBe("✓ Suggestions on");
+    expect(label(false)).toBe("✕ Suggestions off");
   });
 
   it("leaves the voice channel unselected when none is stored", () => {
-    const [, voiceRow] = buildGameSetupComponents(9, [catan], [], null);
+    const [, voiceRow] = buildGameSetupComponents(9, [catan], [], null, true);
     const select = voiceRow.toJSON().components[0];
     expect(select.default_values ?? []).toEqual([]);
   });
 
   it("pre-selects the currently stored voice channel", () => {
-    const [, voiceRow] = buildGameSetupComponents(9, [catan], [], "voice-42");
+    const [, voiceRow] = buildGameSetupComponents(9, [catan], [], "voice-42", true);
     const select = voiceRow.toJSON().components[0];
     expect(select.default_values).toEqual([{ id: "voice-42", type: "channel" }]);
   });
